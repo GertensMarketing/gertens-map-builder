@@ -18,12 +18,15 @@
         .row-item:hover { background: #fff; border-color: #cbd5e1; }
         .row-item.active { border-left-color: #3b82f6; background: #eff6ff; border-color: #3b82f6; }
         
+        /* Hide Dangerous Leaflet Buttons */
         .leaflet-draw-toolbar a[title="Clear all layers"], 
         .leaflet-draw-actions a[title="Clear all layers"] { display: none !important; }
 
+        /* Custom Modal Overlay */
         #modalOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; items-align: center; }
         #modalContent { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
 
+        /* Toast Notification */
         #toast { 
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
             background: #333; color: white; padding: 12px 24px; border-radius: 50px; 
@@ -35,12 +38,16 @@
         #toast.success { background: #22c55e; }
         #toast.warning { background: #f59e0b; color: #fff; }
 
+        /* Undo/Redo Buttons Disabled State */
         button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Snap Button Active State */
+        .snap-active { background-color: rgba(34, 197, 94, 0.2) !important; border-color: rgba(34, 197, 94, 0.5) !important; color: #86efac !important; }
     </style>
 </head>
 <body>
 
-    <!-- Header -->
+    <!-- Header with Custom Brand Color -->
     <div class="bg-[#bb141a] text-white p-3 flex justify-between items-center shadow-md z-10 relative">
         <div class="flex items-center gap-3">
             <i class="fa-solid fa-seedling text-white text-xl opacity-90"></i>
@@ -50,6 +57,7 @@
             </div>
         </div>
         <div class="flex gap-2 items-center">
+            <!-- Undo/Redo Controls -->
             <div class="flex bg-black/20 rounded mr-1">
                 <button id="btnUndo" onclick="undo()" class="px-3 py-1 hover:bg-black/20 rounded-l border-r border-white/20 transition text-white" title="Undo (Ctrl+Z)">
                     <i class="fa-solid fa-rotate-left"></i>
@@ -59,6 +67,13 @@
                 </button>
             </div>
 
+            <!-- Snap To Grid Toggle -->
+            <button id="btnSnap" onclick="toggleSnap()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10 mr-1 flex items-center gap-2" title="Align boxes to a grid">
+                <i class="fa-solid fa-magnet"></i> 
+                <span id="snapText">Snap: OFF</span>
+            </button>
+
+            <!-- Advanced Menu -->
             <div class="relative">
                 <button onclick="toggleAdvancedMenu()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10">
                     ADVANCED <i class="fa-solid fa-caret-down ml-1 text-xs"></i>
@@ -74,8 +89,9 @@
                 </div>
             </div>
 
-             <button onclick="saveToLocal(true)" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1 rounded text-sm transition font-semibold" title="Save to Browser Memory">
-                <i class="fa-solid fa-floppy-disk mr-1"></i> Save Local
+            <!-- Download CSV Button (Moved to Top Right) -->
+             <button onclick="downloadCSV()" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1 rounded text-sm transition font-semibold flex items-center gap-2" title="Download Backup CSV">
+                <i class="fa-solid fa-file-csv"></i> CSV
             </button>
         </div>
     </div>
@@ -97,6 +113,12 @@
             <!-- Sync Actions -->
             <div class="p-4 bg-white border-t border-gray-200 space-y-2">
                 <h3 class="font-bold text-gray-800 mb-2 text-sm">Step 2: Save Changes</h3>
+                
+                <!-- Unsaved Changes Warning -->
+                <div id="unsavedChangesMsg" class="hidden bg-red-50 border border-red-100 text-red-600 p-2 rounded text-xs font-bold text-center mb-2 animate-pulse">
+                    <i class="fa-solid fa-circle-exclamation mr-1"></i> Changes you've made have not been synced yet.<br>Use button below to sync to website.
+                </div>
+
                 <button id="syncBtn" onclick="syncToGoogle()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded shadow-sm flex items-center justify-center gap-3 transition">
                     <i class="fa-brands fa-google-drive text-2xl"></i>
                     <div class="flex flex-col text-left">
@@ -104,15 +126,6 @@
                         <span class="text-[10px] font-normal opacity-90 leading-tight">Syncing data will automatically update map on website.</span>
                     </div>
                 </button>
-
-                <div class="border-t border-gray-100 my-2 pt-2 grid grid-cols-2 gap-2">
-                    <button onclick="downloadCSV()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded text-xs font-semibold border border-gray-300">
-                        <i class="fa-solid fa-file-csv"></i> Download CSV
-                    </button>
-                    <button onclick="copyJSON()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded text-xs font-semibold border border-gray-300">
-                        <i class="fa-solid fa-code"></i> Copy JSON
-                    </button>
-                </div>
             </div>
         </div>
 
@@ -149,18 +162,14 @@
         // --- CONFIGURATION ---
         const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?output=csv"; 
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-wLQcYoDPacJeLHBmkexXQX8hQFzgNwTRKBP_SgW0cb7hncZW2LlfcHjR3-wLzvAbQQ/exec";
-
-        // --- CUSTOM MAP OVERLAY CONFIG ---
-        // To use your own drone image:
-        // 1. Upload your image (PNG with transparent edges preferred) to a host
-        // 2. Paste the URL below
-        // 3. Find the Lat/Lng of the Top-Left corner and Bottom-Right corner
         
+        const GRID_STEP = 0.00001;
+
         const CUSTOM_IMAGE = {
-            url: "", // e.g. "https://mysite.com/gertens-map-v1.png"
+            url: "", 
             bounds: [
-                [44.8735, -93.0530], // Top Left (North West)
-                [44.8710, -93.0500]  // Bottom Right (South East)
+                [44.8735, -93.0530],
+                [44.8710, -93.0500]
             ],
             opacity: 1.0
         };
@@ -186,6 +195,8 @@
         let rowsData = [];
         let currentlyEditing = null;
         let lastUsedType = "Annuals"; 
+        let snapEnabled = false;
+        let autoSaveInterval;
         
         // History State
         let historyStack = [];
@@ -202,26 +213,24 @@
                 minZoom: 17 
             }).setView([44.872063, -93.051572], 19);
 
-            // 2. Base Satellite Layer
+            // 2. Base Layers
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri',
                 maxZoom: 20
             }).addTo(map);
             
-            // Labels
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
                 maxZoom: 20
             }).addTo(map);
 
-            // 3. Custom Graphic Overlay (If Configured)
             if (CUSTOM_IMAGE.url && CUSTOM_IMAGE.url.length > 5) {
                 L.imageOverlay(CUSTOM_IMAGE.url, CUSTOM_IMAGE.bounds, {
                     opacity: CUSTOM_IMAGE.opacity,
-                    zIndex: 2 // Sits above satellite (1) but below rows (10+)
+                    zIndex: 2
                 }).addTo(map);
             }
 
-            // 4. Setup Drawing
+            // 2. Setup Drawing
             drawnItems = new L.FeatureGroup();
             map.addLayer(drawnItems);
 
@@ -235,7 +244,7 @@
             });
             map.addControl(drawControl);
 
-            // 5. Load Saved Data
+            // 3. Load Saved Data
             const saved = localStorage.getItem('gardenMapData');
             if (saved) {
                 try {
@@ -248,8 +257,22 @@
             }
 
             // Events
-            map.on(L.Draw.Event.CREATED, handleCreate);
-            map.on(L.Draw.Event.EDITED, () => { updateUI(); saveToLocal(); });
+            map.on(L.Draw.Event.CREATED, (e) => {
+                handleCreate(e);
+                markUnsaved(); // Mark as dirty
+            });
+            map.on(L.Draw.Event.EDITED, (e) => {
+                if(snapEnabled) {
+                    e.layers.eachLayer(layer => {
+                        if (layer instanceof L.Rectangle) {
+                            snapLayerToGrid(layer);
+                        }
+                    });
+                }
+                updateUI(); 
+                saveToLocal();
+                markUnsaved(); // Mark as dirty
+            });
             
             map.on('click', function(e) {
                 disableAllEdits();
@@ -262,7 +285,56 @@
 
             executeLoadCloud(true);
             updateUndoRedoUI();
+
+            // Auto-Save every 30 seconds
+            autoSaveInterval = setInterval(() => {
+                saveToLocal(false, true); 
+            }, 30000);
         });
+
+        // --- UNSAVED CHANGES HELPERS ---
+        function markUnsaved() {
+            const msg = document.getElementById('unsavedChangesMsg');
+            if(msg) msg.classList.remove('hidden');
+        }
+
+        function markSaved() {
+            const msg = document.getElementById('unsavedChangesMsg');
+            if(msg) msg.classList.add('hidden');
+        }
+
+        // --- GRID SNAPPING LOGIC ---
+        function toggleSnap() {
+            snapEnabled = !snapEnabled;
+            const btn = document.getElementById('btnSnap');
+            const txt = document.getElementById('snapText');
+            
+            if(snapEnabled) {
+                btn.classList.add('snap-active');
+                txt.innerText = "Snap: ON";
+                showToast("Grid Snapping Enabled", "success");
+            } else {
+                btn.classList.remove('snap-active');
+                txt.innerText = "Snap: OFF";
+                showToast("Grid Snapping Disabled", "info");
+            }
+        }
+
+        function snapValue(val) {
+            return Math.round(val / GRID_STEP) * GRID_STEP;
+        }
+
+        function snapLayerToGrid(layer) {
+            const bounds = layer.getBounds();
+            
+            const south = snapValue(bounds.getSouth());
+            const west = snapValue(bounds.getWest());
+            const north = snapValue(bounds.getNorth());
+            const east = snapValue(bounds.getEast());
+            
+            const newBounds = L.latLngBounds([south, west], [north, east]);
+            layer.setBounds(newBounds);
+        }
 
         // --- MENU LOGIC ---
         function toggleAdvancedMenu() {
@@ -296,6 +368,9 @@
 
         function disableAllEdits() {
             if (currentlyEditing) {
+                if (snapEnabled && currentlyEditing instanceof L.Rectangle) {
+                    snapLayerToGrid(currentlyEditing);
+                }
                 currentlyEditing.editing.disable();
                 saveToLocal(); 
                 currentlyEditing = null;
@@ -328,6 +403,7 @@
                 loadDataToMap(previousState);
                 saveToLocal(false, true); 
                 showToast("Undo", "info");
+                markUnsaved(); // Undo counts as a change
             }
             updateUndoRedoUI();
         };
@@ -341,6 +417,7 @@
                 loadDataToMap(nextState);
                 saveToLocal(false, true); 
                 showToast("Redo", "info");
+                markUnsaved(); // Redo counts as a change
             }
             updateUndoRedoUI();
         };
@@ -367,6 +444,10 @@
 
             layer.setStyle({ color: color });
             
+            if (snapEnabled && layer instanceof L.Rectangle) {
+                snapLayerToGrid(layer);
+            }
+
             const latlngs = layer.getLatLngs();
             const coordsArray = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
             const formattedCoords = coordsArray.map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
@@ -489,6 +570,8 @@
             }
             saveToLocal(); 
             if(newRows.length > 0 && !data) showToast(`Success! Loaded ${newRows.length} rows.`, "success");
+            
+            markSaved(); // Data loaded from cloud is clean
             updateUI();
         }
 
@@ -608,11 +691,12 @@
                         layer.setStyle({ color: newColor });
                         const swatch = document.getElementById(`color-swatch-${id}`);
                         if(swatch) swatch.style.backgroundColor = newColor;
-                        lastUsedType = value; // Remember last type
+                        lastUsedType = value; 
                     }
                 }
             });
             saveToLocal();
+            markUnsaved(); // Edit counts as a change
         };
 
         window.confirmDelete = function(id) {
@@ -631,7 +715,12 @@
                     found = true;
                 }
             });
-            if(found) { updateUI(); saveToLocal(); showToast("Row Deleted", "error"); }
+            if(found) { 
+                updateUI(); 
+                saveToLocal(); 
+                showToast("Row Deleted", "error"); 
+                markUnsaved(); // Delete counts as a change
+            }
         }
 
         async function syncToGoogle() {
@@ -653,6 +742,7 @@
                 });
                 
                 showToast("Sync Complete!", "success");
+                markSaved(); // Mark as clean on success
             } catch (error) {
                 console.error(error);
                 showToast("Sync Failed. Check Internet.", "error");
@@ -680,7 +770,9 @@
             localStorage.setItem('gardenMapData', JSON.stringify(data));
             rowsData = data;
             
-            if(notify) showToast("Saved to browser!", "success");
+            if(notify) {
+                showToast("Saved to browser!", "success");
+            }
         }
 
         function showToast(msg, type="info") {
