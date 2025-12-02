@@ -18,15 +18,12 @@
         .row-item:hover { background: #fff; border-color: #cbd5e1; }
         .row-item.active { border-left-color: #3b82f6; background: #eff6ff; border-color: #3b82f6; }
         
-        /* Hide Dangerous Leaflet Buttons */
         .leaflet-draw-toolbar a[title="Clear all layers"], 
         .leaflet-draw-actions a[title="Clear all layers"] { display: none !important; }
 
-        /* Custom Modal Overlay */
         #modalOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; items-align: center; }
         #modalContent { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
 
-        /* Toast Notification */
         #toast { 
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
             background: #333; color: white; padding: 12px 24px; border-radius: 50px; 
@@ -38,13 +35,12 @@
         #toast.success { background: #22c55e; }
         #toast.warning { background: #f59e0b; color: #fff; }
 
-        /* Undo/Redo Buttons Disabled State */
         button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
-    <!-- Header with Custom Brand Color -->
+    <!-- Header -->
     <div class="bg-[#bb141a] text-white p-3 flex justify-between items-center shadow-md z-10 relative">
         <div class="flex items-center gap-3">
             <i class="fa-solid fa-seedling text-white text-xl opacity-90"></i>
@@ -54,7 +50,6 @@
             </div>
         </div>
         <div class="flex gap-2 items-center">
-            <!-- Undo/Redo Controls -->
             <div class="flex bg-black/20 rounded mr-1">
                 <button id="btnUndo" onclick="undo()" class="px-3 py-1 hover:bg-black/20 rounded-l border-r border-white/20 transition text-white" title="Undo (Ctrl+Z)">
                     <i class="fa-solid fa-rotate-left"></i>
@@ -64,7 +59,6 @@
                 </button>
             </div>
 
-            <!-- Advanced Menu -->
             <div class="relative">
                 <button onclick="toggleAdvancedMenu()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10">
                     ADVANCED <i class="fa-solid fa-caret-down ml-1 text-xs"></i>
@@ -89,7 +83,6 @@
     <div id="container">
         <!-- Sidebar -->
         <div id="sidebar" class="flex flex-col h-full shadow-xl z-20">
-            
             <!-- Row List -->
             <div class="flex-1 overflow-y-auto p-2 bg-slate-50">
                 <h2 class="font-bold text-gray-500 mb-2 px-2 text-xs uppercase tracking-wider mt-4">Active Rows (<span id="rowCount">0</span>)</h2>
@@ -104,8 +97,6 @@
             <!-- Sync Actions -->
             <div class="p-4 bg-white border-t border-gray-200 space-y-2">
                 <h3 class="font-bold text-gray-800 mb-2 text-sm">Step 2: Save Changes</h3>
-                
-                <!-- UPDATED BUTTON -->
                 <button id="syncBtn" onclick="syncToGoogle()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded shadow-sm flex items-center justify-center gap-3 transition">
                     <i class="fa-brands fa-google-drive text-2xl"></i>
                     <div class="flex flex-col text-left">
@@ -159,10 +150,24 @@
         const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?output=csv"; 
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-wLQcYoDPacJeLHBmkexXQX8hQFzgNwTRKBP_SgW0cb7hncZW2LlfcHjR3-wLzvAbQQ/exec";
 
-        // Row Types Definition
+        // --- CUSTOM MAP OVERLAY CONFIG ---
+        // To use your own drone image:
+        // 1. Upload your image (PNG with transparent edges preferred) to a host
+        // 2. Paste the URL below
+        // 3. Find the Lat/Lng of the Top-Left corner and Bottom-Right corner
+        
+        const CUSTOM_IMAGE = {
+            url: "", // e.g. "https://mysite.com/gertens-map-v1.png"
+            bounds: [
+                [44.8735, -93.0530], // Top Left (North West)
+                [44.8710, -93.0500]  // Bottom Right (South East)
+            ],
+            opacity: 1.0
+        };
+
         const ROW_TYPES = {
             "Annuals": "#8B0000",
-            "Color Block": "#FF00FF", // Magenta placeholder for Rainbow
+            "Color Block": "#FF00FF",
             "Evergreens": "#006400",
             "Hardscapes": "#FFD700",
             "Mulch and Soils": "#800000",
@@ -179,8 +184,8 @@
         let map;
         let drawnItems;
         let rowsData = [];
-        let currentlyEditing = null; // Track what we are editing
-        let lastUsedType = "Annuals"; // NEW: Remember last used type
+        let currentlyEditing = null;
+        let lastUsedType = "Annuals"; 
         
         // History State
         let historyStack = [];
@@ -191,22 +196,32 @@
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof L === 'undefined') { showToast("Error: Map library failed to load.", "error"); return; }
 
-            // 1. Setup Map with Strict Zoom Limits
+            // 1. Setup Map
             map = L.map('map', {
                 maxZoom: 20, 
-                minZoom: 17 // Strict Zoom
+                minZoom: 17 
             }).setView([44.872063, -93.051572], 19);
 
+            // 2. Base Satellite Layer
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri',
                 maxZoom: 20
             }).addTo(map);
             
+            // Labels
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
                 maxZoom: 20
             }).addTo(map);
 
-            // 2. Setup Drawing
+            // 3. Custom Graphic Overlay (If Configured)
+            if (CUSTOM_IMAGE.url && CUSTOM_IMAGE.url.length > 5) {
+                L.imageOverlay(CUSTOM_IMAGE.url, CUSTOM_IMAGE.bounds, {
+                    opacity: CUSTOM_IMAGE.opacity,
+                    zIndex: 2 // Sits above satellite (1) but below rows (10+)
+                }).addTo(map);
+            }
+
+            // 4. Setup Drawing
             drawnItems = new L.FeatureGroup();
             map.addLayer(drawnItems);
 
@@ -220,7 +235,7 @@
             });
             map.addControl(drawControl);
 
-            // 3. Load Saved Data
+            // 5. Load Saved Data
             const saved = localStorage.getItem('gardenMapData');
             if (saved) {
                 try {
@@ -232,29 +247,19 @@
                 recordHistory([]); 
             }
 
-            // 4. Events
+            // Events
             map.on(L.Draw.Event.CREATED, handleCreate);
             map.on(L.Draw.Event.EDITED, () => { updateUI(); saveToLocal(); });
             
-            // 5. Click Background to Stop Editing
             map.on('click', function(e) {
-                // If clicking directly on map (not a layer)
                 disableAllEdits();
             });
 
-            // 6. Keyboard Shortcuts
             document.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-                    e.preventDefault();
-                    undo();
-                }
-                if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
-                    e.preventDefault();
-                    redo();
-                }
+                if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redo(); }
             });
 
-            // 7. AUTO LOAD CLOUD DATA
             executeLoadCloud(true);
             updateUndoRedoUI();
         });
@@ -265,7 +270,6 @@
             menu.classList.toggle('hidden');
         }
 
-        // Close menu when clicking outside
         window.addEventListener('click', function(e) {
             const menu = document.getElementById('advancedMenu');
             const btn = document.querySelector('button[onclick="toggleAdvancedMenu()"]');
@@ -276,18 +280,11 @@
 
         // --- EDIT MODE LOGIC ---
         function enableEditLayer(layer) {
-            // If already editing this one, do nothing
             if (currentlyEditing === layer) return;
-
-            // Stop editing previous
             disableAllEdits();
-
-            // Enable new
             if (layer.editing) {
                 layer.editing.enable();
                 currentlyEditing = layer;
-                
-                // Highlight sidebar item
                 const id = layer.feature.properties.id;
                 const sidebarItem = document.getElementById(`sidebar-item-${id}`);
                 if (sidebarItem) {
@@ -300,15 +297,9 @@
         function disableAllEdits() {
             if (currentlyEditing) {
                 currentlyEditing.editing.disable();
-                
-                // Save changes if dragged
-                // Note: 'editstop' event usually handles this, but manual disable might not trigger it in all versions
                 saveToLocal(); 
-                
                 currentlyEditing = null;
             }
-            
-            // Remove sidebar highlights
             document.querySelectorAll('.row-item').forEach(el => {
                 el.classList.remove('active', 'border-l-4', 'border-blue-500', 'bg-blue-50');
             });
@@ -371,7 +362,6 @@
             const id = `row-${Date.now().toString().slice(-4)}`;
             
             const name = "New Row";
-            // USE LAST USED TYPE instead of default "Annuals"
             const type = lastUsedType;
             const color = ROW_TYPES[type];
 
@@ -388,7 +378,6 @@
                 coords: formattedCoords 
             };
 
-            // Attach click-to-edit listener to new layer
             layer.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
                 enableEditLayer(layer);
@@ -398,8 +387,6 @@
             updateUI();
             saveToLocal();
             
-            // Auto-select new row
-            enableEditLayer(layer);
             showToast("Row created! Edit name in sidebar.", "success");
         }
 
@@ -523,8 +510,6 @@
                 }
 
                 layer.feature = { properties: row };
-                
-                // Add click listener to existing rows too
                 layer.on('click', function(e) {
                     L.DomEvent.stopPropagation(e);
                     enableEditLayer(layer);
@@ -603,10 +588,8 @@
                 `;
                 
                 div.addEventListener('click', (e) => {
-                    // Prevent sidebar click from zooming if just clicking inputs
                     if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
                     if (e.target.closest('button')) return;
-                    
                     map.flyToBounds(layer.getBounds(), { padding: [50, 50] });
                     enableEditLayer(layer);
                 });
@@ -623,12 +606,9 @@
                         const newColor = ROW_TYPES[value] || "#8B0000";
                         layer.feature.properties.color = newColor;
                         layer.setStyle({ color: newColor });
-                        
                         const swatch = document.getElementById(`color-swatch-${id}`);
                         if(swatch) swatch.style.backgroundColor = newColor;
-                        
-                        // NEW: Remember this type for the next creation
-                        lastUsedType = value;
+                        lastUsedType = value; // Remember last type
                     }
                 }
             });
@@ -654,7 +634,6 @@
             if(found) { updateUI(); saveToLocal(); showToast("Row Deleted", "error"); }
         }
 
-        // --- SYNC ---
         async function syncToGoogle() {
             saveToLocal();
             if (rowsData.length === 0) { showToast("Draw some rows first!", "error"); return; }
