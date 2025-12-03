@@ -559,22 +559,34 @@
             updateUI();
         }
 
-        // --- UPDATED UI LOGIC ---
+        // --- UPDATED UI LOGIC WITH SORTING ---
         function updateUI() {
             if (!drawnItems) return;
             const list = document.getElementById('rowsList');
             const layers = drawnItems.getLayers();
             document.getElementById('rowCount').innerText = layers.length;
             list.innerHTML = '';
-            rowsData = [];
+            rowsData = []; // Clear and rebuild in sorted order
 
             if (layers.length === 0) { list.innerHTML = `<div class="text-gray-400 text-sm italic text-center mt-10">Map is empty.<br>Draw a row to start.</div>`; return; }
 
+            // 1. Collect everything
+            let items = [];
             layers.forEach(layer => {
                 const props = layer.feature.properties;
                 const latlngs = layer.getLatLngs();
                 props.coords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs).map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
-                rowsData.push(props);
+                items.push({ layer, props });
+            });
+
+            // 2. Sort by Name
+            items.sort((a, b) => (a.props.name || "").localeCompare(b.props.name || ""));
+
+            // 3. Render
+            items.forEach(item => {
+                const layer = item.layer;
+                const props = item.props;
+                rowsData.push(props); // Add to data in sort order
 
                 let optionsHtml = '';
                 for (const [typeName] of Object.entries(ROW_TYPES)) {
@@ -585,7 +597,6 @@
                 div.id = `sidebar-item-${props.id}`;
                 div.className = "row-item bg-white p-3 rounded shadow-sm border border-gray-200 cursor-pointer mb-2";
                 
-                // Parse products for tags
                 const tags = (props.products || "").split(',').map(s => s.trim()).filter(s => s.length > 0);
 
                 div.innerHTML = `
@@ -622,11 +633,8 @@
 
                 list.appendChild(div);
                 
-                // Initialize Tags
                 const tagContainer = div.querySelector(`#tags-${props.id}`);
                 renderTags(tagContainer, tags, props.id);
-                
-                // Initialize Input Event Listeners
                 const tagInput = div.querySelector(`#tag-input-${props.id}`);
                 setupTagInput(tagInput, props.id);
             });
@@ -669,7 +677,7 @@
                 const props = layer.feature.properties;
                 const latlngs = layer.getLatLngs();
                 const coords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs).map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
-                data.push({ ...props, coords }); // Clone props
+                data.push({ ...props, coords }); 
             });
             if (!skipHistory) recordHistory(data);
             localStorage.setItem('gardenMapData', JSON.stringify(data));
