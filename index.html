@@ -13,7 +13,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        body, html { height: 100%; margin: 0; display: flex; flex-direction: column; font-family: sans-serif; }
+        /* ADDED overflow: hidden to prevent body scrolling */
+        body, html { height: 100%; margin: 0; display: flex; flex-direction: column; font-family: sans-serif; overflow: hidden; }
         #container { display: flex; flex: 1; height: 100%; position: relative; }
         #sidebar { width: 350px; background: #f8fafc; border-right: 1px solid #cbd5e1; display: flex; flex-direction: column; }
         #map { flex: 1; z-index: 1; }
@@ -114,8 +115,8 @@
                 </div>
             </div>
 
-            <!-- Sync Actions -->
-            <div class="p-4 bg-white border-t border-gray-200 space-y-2">
+            <!-- Sync Actions (UPDATED: Added pb-8 for safe area) -->
+            <div class="p-4 pb-8 bg-white border-t border-gray-200 space-y-2">
                 <h3 class="font-bold text-gray-800 mb-2 text-sm">Step 2: Save Changes</h3>
                 
                 <!-- Unsaved Changes Warning -->
