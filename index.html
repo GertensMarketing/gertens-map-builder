@@ -15,9 +15,7 @@
     <style>
         body, html { height: 100%; margin: 0; display: flex; flex-direction: column; font-family: sans-serif; overflow: hidden; }
         
-        /* FIX: Removed 'height: 100%' and added 'min-height: 0' to allow flex to calculate remaining space correctly without overflow */
         #container { display: flex; flex: 1; min-height: 0; position: relative; }
-        
         #sidebar { width: 350px; background: #f8fafc; border-right: 1px solid #cbd5e1; display: flex; flex-direction: column; }
         #map { flex: 1; z-index: 1; }
         
@@ -25,15 +23,12 @@
         .row-item:hover { background: #fff; border-color: #cbd5e1; }
         .row-item.active { border-left-color: #3b82f6; background: #eff6ff; border-color: #3b82f6; }
         
-        /* Hide Dangerous Leaflet Buttons */
         .leaflet-draw-toolbar a[title="Clear all layers"], 
         .leaflet-draw-actions a[title="Clear all layers"] { display: none !important; }
 
-        /* Custom Modal Overlay */
         #modalOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; items-align: center; }
         #modalContent { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
 
-        /* Toast Notification */
         #toast { 
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
             background: #333; color: white; padding: 12px 24px; border-radius: 50px; 
@@ -45,16 +40,45 @@
         #toast.success { background: #22c55e; }
         #toast.warning { background: #f59e0b; color: #fff; }
 
-        /* Undo/Redo Buttons Disabled State */
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        /* Snap Button Active State */
         .snap-active { background-color: rgba(34, 197, 94, 0.2) !important; border-color: rgba(34, 197, 94, 0.5) !important; color: #86efac !important; }
+
+        /* AUTOCOMPLETE STYLES */
+        .autocomplete-list {
+            position: absolute;
+            border: 1px solid #d4d4d4;
+            border-bottom: none;
+            border-top: none;
+            z-index: 99;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background-color: white;
+            max-height: 150px;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 0 0 4px 4px;
+        }
+        .autocomplete-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            background-color: #fff; 
+            border-bottom: 1px solid #d4d4d4;
+            font-size: 12px;
+            color: #333;
+        }
+        .autocomplete-item:hover {
+            background-color: #e9e9e9; 
+        }
+        .autocomplete-active {
+            background-color: #3b82f6 !important; 
+            color: #ffffff; 
+        }
     </style>
 </head>
 <body>
 
-    <!-- Header with Custom Brand Color -->
+    <!-- Header -->
     <div class="bg-[#bb141a] text-white p-3 flex justify-between items-center shadow-md z-10 relative">
         <div class="flex items-center gap-3">
             <i class="fa-solid fa-seedling text-white text-xl opacity-90"></i>
@@ -64,100 +88,56 @@
             </div>
         </div>
         <div class="flex gap-2 items-center">
-            <!-- Undo/Redo Controls -->
             <div class="flex bg-black/20 rounded mr-1">
-                <button id="btnUndo" onclick="undo()" class="px-3 py-1 hover:bg-black/20 rounded-l border-r border-white/20 transition text-white" title="Undo (Ctrl+Z)">
-                    <i class="fa-solid fa-rotate-left"></i>
-                </button>
-                <button id="btnRedo" onclick="redo()" class="px-3 py-1 hover:bg-black/20 rounded-r transition text-white" title="Redo (Ctrl+Y)">
-                    <i class="fa-solid fa-rotate-right"></i>
-                </button>
+                <button id="btnUndo" onclick="undo()" class="px-3 py-1 hover:bg-black/20 rounded-l border-r border-white/20 transition text-white" title="Undo (Ctrl+Z)"><i class="fa-solid fa-rotate-left"></i></button>
+                <button id="btnRedo" onclick="redo()" class="px-3 py-1 hover:bg-black/20 rounded-r transition text-white" title="Redo (Ctrl+Y)"><i class="fa-solid fa-rotate-right"></i></button>
             </div>
-
-            <!-- Snap To Grid Toggle -->
-            <button id="btnSnap" onclick="toggleSnap()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10 mr-1 flex items-center gap-2" title="Align boxes to a grid">
-                <i class="fa-solid fa-magnet"></i> 
-                <span id="snapText">Snap: OFF</span>
-            </button>
-
-            <!-- Advanced Menu -->
+            <button id="btnSnap" onclick="toggleSnap()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10 mr-1 flex items-center gap-2" title="Align boxes to a grid"><i class="fa-solid fa-magnet"></i> <span id="snapText">Snap: OFF</span></button>
             <div class="relative">
-                <button onclick="toggleAdvancedMenu()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10">
-                    ADVANCED <i class="fa-solid fa-caret-down ml-1 text-xs"></i>
-                </button>
+                <button onclick="toggleAdvancedMenu()" class="bg-black/20 hover:bg-black/30 text-white px-3 py-1 rounded text-sm transition font-bold border border-white/10">ADVANCED <i class="fa-solid fa-caret-down ml-1 text-xs"></i></button>
                 <div id="advancedMenu" class="hidden absolute right-0 top-full mt-2 w-72 bg-white rounded shadow-xl border border-gray-200 z-50 overflow-hidden text-gray-800">
                     <button onclick="confirmLoadCloud(); toggleAdvancedMenu()" class="w-full text-left px-4 py-3 hover:bg-gray-100 border-b border-gray-100 flex items-start gap-3 transition">
                         <div class="bg-blue-100 p-2 rounded text-blue-600 mt-1"><i class="fa-solid fa-cloud-arrow-down"></i></div>
                         <div>
                             <div class="font-bold text-sm text-gray-800">Reset data to match spreadsheet</div>
-                            <div class="text-xs text-gray-500 mt-0.5 leading-snug">Warning: This replaces your current map edits with data from the cloud.</div>
+                            <div class="text-xs text-gray-500 mt-0.5 leading-snug">Warning: Replaces edits with cloud data.</div>
                         </div>
                     </button>
                 </div>
             </div>
-
-            <!-- Download CSV Button -->
-             <button onclick="downloadCSV()" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1 rounded text-sm transition font-semibold flex items-center gap-2" title="Download Backup CSV">
-                <i class="fa-solid fa-file-csv"></i> CSV
-            </button>
+             <button onclick="downloadCSV()" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1 rounded text-sm transition font-semibold flex items-center gap-2" title="Download Backup CSV"><i class="fa-solid fa-file-csv"></i> CSV</button>
         </div>
     </div>
 
     <div id="container">
         <!-- Sidebar -->
         <div id="sidebar" class="flex flex-col h-full shadow-xl z-20">
-            <!-- Row List -->
             <div class="flex-1 overflow-y-auto p-2 bg-slate-50">
                 <h2 class="font-bold text-gray-500 mb-2 px-2 text-xs uppercase tracking-wider mt-4">Active Rows (<span id="rowCount">0</span>)</h2>
                 <div id="rowsList" class="space-y-2 pb-10">
-                    <div class="text-gray-400 text-sm italic text-center mt-10">
-                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>
-                        Loading live data...
-                    </div>
+                    <div class="text-gray-400 text-sm italic text-center mt-10"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>Loading live data...</div>
                 </div>
             </div>
-
             <!-- Sync Actions -->
-            <div class="p-4 bg-white border-t border-gray-200 space-y-2">
+            <div class="p-4 pb-8 bg-white border-t border-gray-200 space-y-2">
                 <h3 class="font-bold text-gray-800 mb-2 text-sm">Save Changes:</h3>
-                
-                <!-- Unsaved Changes Warning -->
                 <div id="unsavedChangesMsg" class="hidden bg-red-50 border border-red-100 text-red-600 p-2 rounded text-xs font-bold text-center mb-2 animate-pulse">
-                    <i class="fa-solid fa-circle-exclamation mr-1"></i> Changes you've made have not been synced yet.<br>Use button below to sync to website.
+                    <i class="fa-solid fa-circle-exclamation mr-1"></i> Changes have not been synced yet.<br>Use button below to sync to website.
                 </div>
-
                 <button id="syncBtn" onclick="syncToGoogle()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded shadow-sm flex items-center justify-center gap-3 transition">
                     <i class="fa-brands fa-google-drive text-2xl"></i>
                     <div class="flex flex-col text-left">
                         <span class="font-bold text-sm">Sync to Map Spreadsheet</span>
-                        <span class="text-[10px] font-normal opacity-90 leading-tight">Syncing data will automatically update map on website.</span>
+                        <span class="text-[10px] font-normal opacity-90 leading-tight">Updates map on website instantly.</span>
                     </div>
                 </button>
             </div>
         </div>
-
-        <!-- Map Area -->
         <div id="map"></div>
-        
-        <!-- Custom Modal -->
-        <div id="modalOverlay" class="flex items-center justify-center">
-            <div id="modalContent">
-                <h3 id="modalTitle" class="font-bold text-lg mb-2">Title</h3>
-                <p id="modalMessage" class="text-gray-600 text-sm mb-4">Message</p>
-                <div id="modalActions" class="flex justify-end gap-2">
-                    <!-- Buttons injected via JS -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Toast Notification -->
-        <div id="toast">
-            <i id="toastIcon" class="fa-solid fa-info-circle"></i>
-            <span id="toastMessage">Notification</span>
-        </div>
+        <div id="modalOverlay" class="flex items-center justify-center"><div id="modalContent"><h3 id="modalTitle" class="font-bold text-lg mb-2">Title</h3><p id="modalMessage" class="text-gray-600 text-sm mb-4">Message</p><div id="modalActions" class="flex justify-end gap-2"></div></div></div>
+        <div id="toast"><i id="toastIcon" class="fa-solid fa-info-circle"></i><span id="toastMessage">Notification</span></div>
     </div>
 
-    <!-- Hidden Copy Field -->
     <textarea id="hiddenCopy" class="hidden"></textarea>
 
     <!-- Scripts -->
@@ -170,194 +150,191 @@
         const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?output=csv"; 
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-wLQcYoDPacJeLHBmkexXQX8hQFzgNwTRKBP_SgW0cb7hncZW2LlfcHjR3-wLzvAbQQ/exec";
         
+        // --- NEW: PASTE YOUR MASTER PLANT LIST CSV URL HERE ---
+        // 1. Create a new tab in your sheet with all plant names in Column A
+        // 2. Publish just that tab as a CSV and paste the link below
+        // I have put a dummy link here for now, but also hardcoded some defaults so you can see it work immediately.
+        const MASTER_LIST_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?gid=1166776934&single=true&output=csv"; 
+
+        // Fallback default plants if sheet isn't connected yet
+        const DEFAULT_PLANTS = [
+            "Hydrangea", "Hydrangea Paniculata", "Hydrangea Arborescens", "Hydrangea Macrophylla", "Hosta", "Hibiscus", "Helleborus",
+            "Petunia", "Petunia Wave", "Pansy", "Peony", "Phlox", "Pepper", "Pumpkin",
+            "Rose", "Rhododendron", "Rudbeckia",
+            "Begonia", "Boxwood", "Basil",
+            "Tomato", "Tulip", "Thuja",
+            "Geranium", "Grass", "Gardenia",
+            "Fern", "Fuchsia", "Forsythia"
+        ];
+
         const GRID_STEP = 0.00001;
-
-        const CUSTOM_IMAGE = {
-            url: "", 
-            bounds: [
-                [44.8735, -93.0530],
-                [44.8710, -93.0500]
-            ],
-            opacity: 1.0
-        };
-
+        const CUSTOM_IMAGE = { url: "", bounds: [[44.8735, -93.0530], [44.8710, -93.0500]], opacity: 1.0 };
         const ROW_TYPES = {
-            "Annuals": "#8B0000",
-            "Color Block": "#FF00FF",
-            "Evergreens": "#006400",
-            "Hardscapes": "#FFD700",
-            "Mulch and Soils": "#800000",
-            "Patio Furniture": "#8B4513",
-            "Perennials": "#800080",
-            "Pottery": "#40E0D0",
-            "Roses & Vines": "#FFB6C1",
-            "Shrubs": "#90EE90",
-            "Trees": "#FFA500",
-            "Tropicals": "#FF1493"
+            "Annuals": "#8B0000", "Color Block": "#FF00FF", "Evergreens": "#006400", "Hardscapes": "#FFD700",
+            "Mulch and Soils": "#800000", "Patio Furniture": "#8B4513", "Perennials": "#800080", "Pottery": "#40E0D0",
+            "Roses & Vines": "#FFB6C1", "Shrubs": "#90EE90", "Trees": "#FFA500", "Tropicals": "#FF1493"
         };
 
-        // Global State
-        let map;
-        let drawnItems;
-        let rowsData = [];
-        let currentlyEditing = null;
-        let lastUsedType = "Annuals"; 
-        let snapEnabled = false;
-        let autoSaveInterval;
-        
-        // History State
-        let historyStack = [];
-        let historyIndex = -1;
+        // State
+        let map, drawnItems, rowsData = [], currentlyEditing = null, lastUsedType = "Annuals", snapEnabled = false, autoSaveInterval;
+        let historyStack = [], historyIndex = -1;
         const MAX_HISTORY = 50; 
+        
+        // Autocomplete State
+        let masterPlantList = [...DEFAULT_PLANTS]; // Initialize with defaults
 
-        // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof L === 'undefined') { showToast("Error: Map library failed to load.", "error"); return; }
 
-            // 1. Setup Map
-            map = L.map('map', {
-                maxZoom: 20, 
-                minZoom: 17 
-            }).setView([44.872063, -93.051572], 19);
+            // Init Map
+            map = L.map('map', { maxZoom: 20, minZoom: 17 }).setView([44.872063, -93.051572], 19);
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 20 }).addTo(map);
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 }).addTo(map);
+            if (CUSTOM_IMAGE.url.length > 5) L.imageOverlay(CUSTOM_IMAGE.url, CUSTOM_IMAGE.bounds, { opacity: CUSTOM_IMAGE.opacity, zIndex: 2 }).addTo(map);
 
-            // 2. Base Layers
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri',
-                maxZoom: 20
-            }).addTo(map);
-            
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 20
-            }).addTo(map);
-
-            if (CUSTOM_IMAGE.url && CUSTOM_IMAGE.url.length > 5) {
-                L.imageOverlay(CUSTOM_IMAGE.url, CUSTOM_IMAGE.bounds, {
-                    opacity: CUSTOM_IMAGE.opacity,
-                    zIndex: 2
-                }).addTo(map);
-            }
-
-            // 2. Setup Drawing
             drawnItems = new L.FeatureGroup();
             map.addLayer(drawnItems);
 
             const drawControl = new L.Control.Draw({
-                draw: {
-                    polyline: false, circle: false, marker: false, circlemarker: false,
-                    polygon: { allowIntersection: false, showArea: true },
-                    rectangle: { shapeOptions: { color: ROW_TYPES["Annuals"], weight: 2 } }
-                },
+                draw: { polyline: false, circle: false, marker: false, circlemarker: false, polygon: { allowIntersection: false, showArea: true }, rectangle: { shapeOptions: { color: ROW_TYPES["Annuals"], weight: 2 } } },
                 edit: { featureGroup: drawnItems, remove: false }
             });
             map.addControl(drawControl);
 
-            // 3. Load Saved Data
+            // Load Local Data
             const saved = localStorage.getItem('gardenMapData');
-            if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    loadDataToMap(parsed);
-                    recordHistory(parsed); 
-                } catch(e) { console.error("Save load error", e); }
-            } else {
-                recordHistory([]); 
-            }
+            if (saved) { try { const parsed = JSON.parse(saved); loadDataToMap(parsed); recordHistory(parsed); } catch(e) { console.error("Save load error", e); } }
+            else { recordHistory([]); }
 
             // Events
-            map.on(L.Draw.Event.CREATED, (e) => {
-                handleCreate(e);
-                markUnsaved(); // Mark as dirty
-            });
-            map.on(L.Draw.Event.EDITED, (e) => {
-                if(snapEnabled) {
-                    e.layers.eachLayer(layer => {
-                        if (layer instanceof L.Rectangle) {
-                            snapLayerToGrid(layer);
-                        }
-                    });
-                }
-                updateUI(); 
-                saveToLocal();
-                markUnsaved(); // Mark as dirty
-            });
-            
-            map.on('click', function(e) {
-                disableAllEdits();
-            });
+            map.on(L.Draw.Event.CREATED, (e) => { handleCreate(e); markUnsaved(); });
+            map.on(L.Draw.Event.EDITED, (e) => { if(snapEnabled) e.layers.eachLayer(l => { if(l instanceof L.Rectangle) snapLayerToGrid(l); }); updateUI(); saveToLocal(); markUnsaved(); });
+            map.on('click', () => disableAllEdits());
+            document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); } if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redo(); } });
 
-            document.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
-                if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redo(); }
-            });
-
+            // Load Data Sources
             executeLoadCloud(true);
+            fetchMasterPlantList(); // Fetch the autocomplete data
             updateUndoRedoUI();
-
-            // Auto-Save every 30 seconds
-            autoSaveInterval = setInterval(() => {
-                saveToLocal(false, true); 
-            }, 30000);
+            autoSaveInterval = setInterval(() => saveToLocal(false, true), 30000);
         });
 
-        // --- UNSAVED CHANGES HELPERS ---
-        function markUnsaved() {
-            const msg = document.getElementById('unsavedChangesMsg');
-            if(msg) msg.classList.remove('hidden');
+        // --- AUTOCOMPLETE LOGIC ---
+        function fetchMasterPlantList() {
+            if(!MASTER_LIST_URL) return;
+            Papa.parse(MASTER_LIST_URL, {
+                download: true,
+                header: false, // Assume simple list in column A
+                complete: function(results) {
+                    const fetchedPlants = results.data.map(row => row[0]).filter(p => p && p.length > 1);
+                    if(fetchedPlants.length > 0) {
+                        masterPlantList = fetchedPlants; // Override defaults if live list found
+                        console.log("Loaded " + masterPlantList.length + " plants for autocomplete.");
+                    }
+                }
+            });
         }
 
-        function markSaved() {
-            const msg = document.getElementById('unsavedChangesMsg');
-            if(msg) msg.classList.add('hidden');
+        function setupAutocomplete(inputElement) {
+            let currentFocus;
+            
+            inputElement.addEventListener("input", function(e) {
+                const val = this.value;
+                closeAllLists();
+                if (!val) return false;
+
+                // Logic: Find the word being typed (after the last comma)
+                const cursorPosition = this.selectionStart;
+                const textBeforeCursor = val.substring(0, cursorPosition);
+                const lastCommaIndex = textBeforeCursor.lastIndexOf(',');
+                
+                // The search term is everything after the last comma (trimmed)
+                let searchTerm = textBeforeCursor.substring(lastCommaIndex + 1).trim(); 
+                
+                if (searchTerm.length < 2) return; // Wait for 2 chars
+
+                currentFocus = -1;
+                
+                // Create matched list container
+                const listDiv = document.createElement("DIV");
+                listDiv.setAttribute("id", this.id + "autocomplete-list");
+                listDiv.setAttribute("class", "autocomplete-list");
+                this.parentNode.appendChild(listDiv); // Append to the textarea's parent (relative div)
+
+                // Position list absolutely relative to parent
+                this.parentNode.style.position = 'relative';
+
+                let matchCount = 0;
+                for (let i = 0; i < masterPlantList.length; i++) {
+                    // Check if plant starts with search term (case insensitive)
+                    if (masterPlantList[i].substr(0, searchTerm.length).toUpperCase() == searchTerm.toUpperCase()) {
+                        if(matchCount > 10) break; // Limit suggestions
+                        matchCount++;
+                        
+                        const itemDiv = document.createElement("DIV");
+                        itemDiv.className = "autocomplete-item";
+                        // Highlight match
+                        itemDiv.innerHTML = "<strong>" + masterPlantList[i].substr(0, searchTerm.length) + "</strong>";
+                        itemDiv.innerHTML += masterPlantList[i].substr(searchTerm.length);
+                        itemDiv.innerHTML += "<input type='hidden' value='" + masterPlantList[i] + "'>";
+                        
+                        itemDiv.addEventListener("click", function(e) {
+                            // Replace the partial term with the full selected term
+                            const fullText = inputElement.value;
+                            const preText = textBeforeCursor.substring(0, lastCommaIndex + 1); // Text before current term
+                            const postText = fullText.substring(cursorPosition); // Text after cursor
+                            
+                            // Insert match + comma + space
+                            const insertion = (preText ? preText + " " : "") + this.getElementsByTagName("input")[0].value + ", ";
+                            
+                            inputElement.value = insertion + postText;
+                            inputElement.focus();
+                            
+                            // Trigger change event to save
+                            inputElement.dispatchEvent(new Event('change'));
+                            
+                            closeAllLists();
+                        });
+                        listDiv.appendChild(itemDiv);
+                    }
+                }
+            });
+
+            // Close list when clicking outside
+            document.addEventListener("click", function (e) {
+                closeAllLists(e.target);
+            });
+
+            function closeAllLists(elmnt) {
+                var x = document.getElementsByClassName("autocomplete-list");
+                for (var i = 0; i < x.length; i++) {
+                    if (elmnt != x[i] && elmnt != inputElement) {
+                        x[i].parentNode.removeChild(x[i]);
+                    }
+                }
+            }
         }
 
-        // --- GRID SNAPPING LOGIC ---
+        // --- STANDARD APP LOGIC ---
+        function markUnsaved() { document.getElementById('unsavedChangesMsg').classList.remove('hidden'); }
+        function markSaved() { document.getElementById('unsavedChangesMsg').classList.add('hidden'); }
         function toggleSnap() {
             snapEnabled = !snapEnabled;
-            const btn = document.getElementById('btnSnap');
-            const txt = document.getElementById('snapText');
-            
-            if(snapEnabled) {
-                btn.classList.add('snap-active');
-                txt.innerText = "Snap: ON";
-                showToast("Grid Snapping Enabled", "success");
-            } else {
-                btn.classList.remove('snap-active');
-                txt.innerText = "Snap: OFF";
-                showToast("Grid Snapping Disabled", "info");
-            }
+            const btn = document.getElementById('btnSnap'), txt = document.getElementById('snapText');
+            if(snapEnabled) { btn.classList.add('snap-active'); txt.innerText = "Snap: ON"; showToast("Grid Snapping Enabled", "success"); }
+            else { btn.classList.remove('snap-active'); txt.innerText = "Snap: OFF"; showToast("Grid Snapping Disabled", "info"); }
         }
-
-        function snapValue(val) {
-            return Math.round(val / GRID_STEP) * GRID_STEP;
-        }
-
+        function snapValue(val) { return Math.round(val / GRID_STEP) * GRID_STEP; }
         function snapLayerToGrid(layer) {
-            const bounds = layer.getBounds();
-            
-            const south = snapValue(bounds.getSouth());
-            const west = snapValue(bounds.getWest());
-            const north = snapValue(bounds.getNorth());
-            const east = snapValue(bounds.getEast());
-            
-            const newBounds = L.latLngBounds([south, west], [north, east]);
-            layer.setBounds(newBounds);
+            const b = layer.getBounds();
+            layer.setBounds(L.latLngBounds([snapValue(b.getSouth()), snapValue(b.getWest())], [snapValue(b.getNorth()), snapValue(b.getEast())]));
         }
-
-        // --- MENU LOGIC ---
-        function toggleAdvancedMenu() {
-            const menu = document.getElementById('advancedMenu');
-            menu.classList.toggle('hidden');
-        }
-
-        window.addEventListener('click', function(e) {
-            const menu = document.getElementById('advancedMenu');
-            const btn = document.querySelector('button[onclick="toggleAdvancedMenu()"]');
-            if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && !btn.contains(e.target)) {
-                menu.classList.add('hidden');
-            }
+        function toggleAdvancedMenu() { document.getElementById('advancedMenu').classList.toggle('hidden'); }
+        window.addEventListener('click', (e) => { 
+            const m = document.getElementById('advancedMenu'), b = document.querySelector('button[onclick="toggleAdvancedMenu()"]');
+            if (m && !m.classList.contains('hidden') && !m.contains(e.target) && !b.contains(e.target)) m.classList.add('hidden');
         });
 
-        // --- EDIT MODE LOGIC ---
         function enableEditLayer(layer) {
             if (currentlyEditing === layer) return;
             disableAllEdits();
@@ -372,173 +349,86 @@
                 }
             }
         }
-
         function disableAllEdits() {
             if (currentlyEditing) {
-                if (snapEnabled && currentlyEditing instanceof L.Rectangle) {
-                    snapLayerToGrid(currentlyEditing);
-                }
+                if (snapEnabled && currentlyEditing instanceof L.Rectangle) snapLayerToGrid(currentlyEditing);
                 currentlyEditing.editing.disable();
-                saveToLocal(); 
+                saveToLocal();
                 currentlyEditing = null;
             }
-            document.querySelectorAll('.row-item').forEach(el => {
-                el.classList.remove('active', 'border-l-4', 'border-blue-500', 'bg-blue-50');
-            });
+            document.querySelectorAll('.row-item').forEach(el => el.classList.remove('active', 'border-l-4', 'border-blue-500', 'bg-blue-50'));
         }
 
-        // --- HISTORY SYSTEM ---
+        // History
         function recordHistory(data) {
             const snapshot = JSON.stringify(data);
-            if (historyIndex < historyStack.length - 1) {
-                historyStack = historyStack.slice(0, historyIndex + 1);
-            }
+            if (historyIndex < historyStack.length - 1) historyStack = historyStack.slice(0, historyIndex + 1);
             if (historyStack.length > 0 && historyStack[historyStack.length - 1] === snapshot) return;
-
             historyStack.push(snapshot);
             if (historyStack.length > MAX_HISTORY) historyStack.shift();
             historyIndex = historyStack.length - 1;
             updateUndoRedoUI();
         }
-
         window.undo = function() {
             if (historyIndex > 0) {
                 historyIndex--;
-                const previousState = JSON.parse(historyStack[historyIndex]);
-                disableAllEdits();
-                drawnItems.clearLayers();
-                loadDataToMap(previousState);
-                saveToLocal(false, true); 
-                showToast("Undo", "info");
-                markUnsaved(); // Undo counts as a change
+                const ps = JSON.parse(historyStack[historyIndex]);
+                disableAllEdits(); drawnItems.clearLayers(); loadDataToMap(ps); saveToLocal(false, true); showToast("Undo", "info"); markUnsaved();
             }
             updateUndoRedoUI();
         };
-
         window.redo = function() {
             if (historyIndex < historyStack.length - 1) {
                 historyIndex++;
-                const nextState = JSON.parse(historyStack[historyIndex]);
-                disableAllEdits();
-                drawnItems.clearLayers();
-                loadDataToMap(nextState);
-                saveToLocal(false, true); 
-                showToast("Redo", "info");
-                markUnsaved(); // Redo counts as a change
+                const ns = JSON.parse(historyStack[historyIndex]);
+                disableAllEdits(); drawnItems.clearLayers(); loadDataToMap(ns); saveToLocal(false, true); showToast("Redo", "info"); markUnsaved();
             }
             updateUndoRedoUI();
         };
-
         function updateUndoRedoUI() {
-            const btnUndo = document.getElementById('btnUndo');
-            const btnRedo = document.getElementById('btnRedo');
-            
-            btnUndo.disabled = historyIndex <= 0;
-            btnRedo.disabled = historyIndex >= historyStack.length - 1;
-            
-            btnUndo.style.opacity = btnUndo.disabled ? "0.3" : "1";
-            btnRedo.style.opacity = btnRedo.disabled ? "0.3" : "1";
+            const u = document.getElementById('btnUndo'), r = document.getElementById('btnRedo');
+            u.disabled = historyIndex <= 0; r.disabled = historyIndex >= historyStack.length - 1;
+            u.style.opacity = u.disabled ? "0.3" : "1"; r.style.opacity = r.disabled ? "0.3" : "1";
         }
 
-        // --- DRAWING LOGIC ---
         function handleCreate(e) {
             const layer = e.layer;
             const id = `row-${Date.now().toString().slice(-4)}`;
-            
             const name = "New Row";
             const type = lastUsedType;
-            const color = ROW_TYPES[type];
-
-            layer.setStyle({ color: color });
+            layer.setStyle({ color: ROW_TYPES[type] });
+            if (snapEnabled && layer instanceof L.Rectangle) snapLayerToGrid(layer);
             
-            if (snapEnabled && layer instanceof L.Rectangle) {
-                snapLayerToGrid(layer);
-            }
-
             const latlngs = layer.getLatLngs();
-            const coordsArray = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
-            const formattedCoords = coordsArray.map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
-
+            const coords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs).map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
             layer.feature = layer.feature || {};
-            layer.feature.properties = { 
-                id, name, type, color, 
-                products: "", 
-                coords: formattedCoords 
-            };
-
-            layer.on('click', function(e) {
-                L.DomEvent.stopPropagation(e);
-                enableEditLayer(layer);
-            });
-
+            layer.feature.properties = { id, name, type, color: ROW_TYPES[type], products: "", coords };
+            layer.on('click', (ev) => { L.DomEvent.stopPropagation(ev); enableEditLayer(layer); });
             drawnItems.addLayer(layer);
-            updateUI();
-            saveToLocal();
-            
-            showToast("Row created! Edit name in sidebar.", "success");
+            updateUI(); saveToLocal(); showToast("Row created!", "success");
         }
 
-        // --- CLOUD LOADING ---
         function confirmLoadCloud() {
-            showModal(
-                "Refresh from Google Sheet?", 
-                "This will reload data from the cloud and replace unsaved changes on the map.",
-                [
-                    { text: "Cancel", class: "bg-gray-200 text-gray-800", action: closeModal },
-                    { text: "Reload Data", class: "bg-blue-600 text-white", action: () => executeLoadCloud(false) }
-                ]
-            );
+            showModal("Refresh from Google Sheet?", "This replaces unsaved changes.", [{ text: "Cancel", class: "bg-gray-200 text-gray-800", action: closeModal }, { text: "Reload Data", class: "bg-blue-600 text-white", action: () => executeLoadCloud(false) }]);
         }
-
         function executeLoadCloud(isAuto = false) {
             if(!isAuto) closeModal();
-            showToast(isAuto ? "Loading live data..." : "Connecting to Google Sheet...", "info");
-            
-            const freshUrl = CSV_URL + (CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
-
-            Papa.parse(freshUrl, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
+            showToast(isAuto ? "Loading live data..." : "Connecting...", "info");
+            Papa.parse(CSV_URL + (CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now(), {
+                download: true, header: true, skipEmptyLines: true,
                 complete: function(results) {
-                    if (results.data && results.data.length > 0) {
-                        processCloudData(results.data);
-                        if(isAuto) showToast("Live data loaded.", "success");
-                    } else {
-                        if(isAuto) {
-                            showToast("Sheet is empty. Start drawing!", "info");
-                            updateUI(); 
-                        } else {
-                            showModal("Error", "Spreadsheet appears to be empty.", [{text:"OK", class:"bg-gray-800 text-white", action:closeModal}]);
-                        }
-                    }
+                    if (results.data && results.data.length > 0) { processCloudData(results.data); if(isAuto) showToast("Live data loaded.", "success"); }
+                    else if(!isAuto) showModal("Error", "Spreadsheet empty.", [{text:"OK", class:"bg-gray-800 text-white", action:closeModal}]);
                 },
                 error: function(err) {
                     console.error(err);
                     if(isAuto) {
                         const saved = localStorage.getItem('gardenMapData');
-                        if (saved) {
-                            try {
-                                const parsed = JSON.parse(saved);
-                                drawnItems.clearLayers();
-                                loadDataToMap(parsed);
-                                recordHistory(parsed); 
-                                showToast("Offline: Loaded local backup.", "warning");
-                            } catch(e) { 
-                                showToast("Could not reach Google Sheet.", "error"); 
-                                updateUI();
-                            }
-                        } else {
-                            showToast("Could not reach Google Sheet.", "error");
-                            updateUI();
-                        }
-                    } else {
-                        showModal("Connection Error", "Could not load spreadsheet. Check internet connection.", [{text:"OK", class:"bg-gray-800 text-white", action:closeModal}]);
-                    }
+                        if (saved) { try { const p = JSON.parse(saved); drawnItems.clearLayers(); loadDataToMap(p); recordHistory(p); showToast("Offline: Loaded local backup.", "warning"); } catch(e){ updateUI(); } }
+                    } else showModal("Connection Error", "Check internet.", [{text:"OK", class:"bg-gray-800 text-white", action:closeModal}]);
                 }
             });
         }
-
         function processCloudData(data) {
             const newRows = [];
             data.forEach(row => {
@@ -547,95 +437,48 @@
                 const name = getCol(row, ['Row Name', 'name', 'Name']) || "Unnamed Row";
                 let type = getCol(row, ['Type', 'type']) || "Annuals";
                 const products = getCol(row, ['Products', 'products']) || "";
-
                 if(!coordsRaw || !id) return;
-
-                if (!ROW_TYPES[type]) {
-                    if(type.toLowerCase() === 'indoor') type = 'Annuals'; 
-                    else if(type.toLowerCase() === 'outdoor') type = 'Trees';
-                    else type = 'Annuals'; 
-                }
-
+                if (!ROW_TYPES[type]) type = 'Annuals';
                 try {
-                    if (typeof coordsRaw === 'string' && coordsRaw.startsWith('"') && coordsRaw.endsWith('"')) {
-                        coordsRaw = coordsRaw.substring(1, coordsRaw.length - 1).replace(/""/g, '"');
-                    }
-                    const coords = JSON.parse(coordsRaw);
-                    const color = ROW_TYPES[type] || "#8B0000";
-                    
-                    newRows.push({
-                        id: id, name: name, type: type, products: products,
-                        color: color,
-                        coords: coords
-                    });
+                    if (typeof coordsRaw === 'string' && coordsRaw.startsWith('"')) coordsRaw = coordsRaw.substring(1, coordsRaw.length - 1).replace(/""/g, '"');
+                    newRows.push({ id, name, type, products, color: ROW_TYPES[type] || "#8B0000", coords: JSON.parse(coordsRaw) });
                 } catch (e) { console.error("Row Parse Error", e); }
             });
-
             drawnItems.clearLayers();
-            if(newRows.length > 0) {
-                loadDataToMap(newRows);
-            }
-            saveToLocal(); 
-            if(newRows.length > 0 && !data) showToast(`Success! Loaded ${newRows.length} rows.`, "success");
-            
-            markSaved(); // Data loaded from cloud is clean
-            updateUI();
+            if(newRows.length > 0) loadDataToMap(newRows);
+            saveToLocal(); markSaved(); updateUI();
         }
-
-        function getCol(row, possibleNames) {
-            for (const key of Object.keys(row)) {
-                if (possibleNames.some(n => n.toLowerCase() === key.toLowerCase().trim())) return row[key];
-            }
-            return null;
-        }
-
+        function getCol(row, aliases) { for (const key of Object.keys(row)) { if (aliases.some(n => n.toLowerCase() === key.toLowerCase().trim())) return row[key]; } return null; }
         function loadDataToMap(data) {
             data.forEach(row => {
-                let layer;
-                if (row.coords.length === 4) {
-                     const bounds = L.latLngBounds(row.coords);
-                     layer = L.rectangle(bounds, { color: row.color, weight: 2 });
-                } else {
-                     layer = L.polygon(row.coords, { color: row.color, weight: 2 });
-                }
-
+                let layer = (row.coords.length === 4) ? L.rectangle(L.latLngBounds(row.coords), { color: row.color, weight: 2 }) : L.polygon(row.coords, { color: row.color, weight: 2 });
                 layer.feature = { properties: row };
-                layer.on('click', function(e) {
-                    L.DomEvent.stopPropagation(e);
-                    enableEditLayer(layer);
-                });
-
+                layer.on('click', (e) => { L.DomEvent.stopPropagation(e); enableEditLayer(layer); });
                 drawnItems.addLayer(layer);
             });
             updateUI();
         }
 
-        // --- UI UPDATES ---
+        // --- UPDATED UI LOGIC TO ATTACH AUTOCOMPLETE ---
         function updateUI() {
             if (!drawnItems) return;
             const list = document.getElementById('rowsList');
             const layers = drawnItems.getLayers();
             document.getElementById('rowCount').innerText = layers.length;
-            
             list.innerHTML = '';
             rowsData = [];
 
-            if (layers.length === 0) {
-                 list.innerHTML = `<div class="text-gray-400 text-sm italic text-center mt-10">Map is empty.<br>Click "Load Rows" or draw a row.</div>`;
-                 return;
-            }
+            if (layers.length === 0) { list.innerHTML = `<div class="text-gray-400 text-sm italic text-center mt-10">Map is empty.<br>Draw a row to start.</div>`; return; }
 
             layers.forEach(layer => {
                 const props = layer.feature.properties;
                 const latlngs = layer.getLatLngs();
-                const coordsArray = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
-                props.coords = coordsArray.map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
+                props.coords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs).map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
                 rowsData.push(props);
 
                 let optionsHtml = '';
-                for (const [typeName, colorCode] of Object.entries(ROW_TYPES)) {
-                    const isSelected = props.type === typeName ? 'selected' : '';
-                    optionsHtml += `<option value="${typeName}" ${isSelected}>${typeName}</option>`;
+                for (const [typeName] of Object.entries(ROW_TYPES)) {
+                    optionsHtml += `<option value="${typeName}" ${props.type === typeName ? 'selected' : ''}>${typeName}</option>`;
                 }
 
                 const div = document.createElement('div');
@@ -646,45 +489,39 @@
                     <div class="flex justify-between items-start gap-2 mb-2">
                         <div class="flex-1">
                             <label class="text-[10px] text-gray-400 font-bold uppercase">Row Name</label>
-                            <input type="text" value="${props.name}" 
-                                class="w-full font-bold text-gray-800 text-sm border-b border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent"
-                                onchange="updateRowProperty('${props.id}', 'name', this.value)">
+                            <input type="text" value="${props.name}" class="w-full font-bold text-gray-800 text-sm border-b border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent" onchange="updateRowProperty('${props.id}', 'name', this.value)">
                         </div>
-                        <button onclick="confirmDelete('${props.id}')" class="text-gray-300 hover:text-red-500 transition px-1">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
+                        <button onclick="confirmDelete('${props.id}')" class="text-gray-300 hover:text-red-500 transition px-1"><i class="fa-solid fa-trash"></i></button>
                     </div>
-                    
                     <div class="flex items-center justify-between mb-2">
                         <div class="w-full">
                             <label class="text-[10px] text-gray-400 font-bold uppercase">Row Type</label>
                             <div class="flex items-center gap-2">
                                 <div id="color-swatch-${props.id}" class="w-4 h-4 rounded border border-gray-300 shadow-sm" style="background-color: ${props.color}"></div>
-                                <select onchange="updateRowProperty('${props.id}', 'type', this.value)" 
-                                        class="flex-1 text-xs font-semibold bg-gray-100 rounded px-1 py-1 border-none outline-none cursor-pointer">
-                                    ${optionsHtml}
-                                </select>
+                                <select onchange="updateRowProperty('${props.id}', 'type', this.value)" class="flex-1 text-xs font-semibold bg-gray-100 rounded px-1 py-1 border-none outline-none cursor-pointer">${optionsHtml}</select>
                             </div>
                         </div>
                     </div>
-
                     <div>
-                        <label class="text-[10px] text-gray-400 font-bold uppercase">Products</label>
-                        <textarea rows="2" 
-                            class="w-full text-xs text-gray-600 bg-gray-50 rounded border border-gray-200 p-1.5 focus:border-blue-500 focus:bg-white focus:outline-none resize-none"
-                            placeholder="e.g. Petunias, Begonias..."
-                            onchange="updateRowProperty('${props.id}', 'products', this.value)">${props.products || ''}</textarea>
+                        <label class="text-[10px] text-gray-400 font-bold uppercase">Products (Type to search)</label>
+                        <div class="relative">
+                            <textarea rows="2" class="w-full text-xs text-gray-600 bg-gray-50 rounded border border-gray-200 p-1.5 focus:border-blue-500 focus:bg-white focus:outline-none resize-none" placeholder="e.g. Petunias, Begonias..." onchange="updateRowProperty('${props.id}', 'products', this.value)">${props.products || ''}</textarea>
+                        </div>
                     </div>
                 `;
                 
                 div.addEventListener('click', (e) => {
                     if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-                    if (e.target.closest('button')) return;
+                    if (e.target.closest('button') || e.target.closest('.autocomplete-item')) return;
                     map.flyToBounds(layer.getBounds(), { padding: [50, 50] });
                     enableEditLayer(layer);
                 });
 
                 list.appendChild(div);
+                
+                // ATTACH AUTOCOMPLETE HERE
+                const ta = div.querySelector('textarea');
+                setupAutocomplete(ta);
             });
         }
 
@@ -702,61 +539,20 @@
                     }
                 }
             });
-            saveToLocal();
-            markUnsaved(); // Edit counts as a change
+            saveToLocal(); markUnsaved();
         };
 
-        window.confirmDelete = function(id) {
-            showModal("Delete Row?", "Are you sure you want to delete this row? This cannot be undone.", [
-                {text:"Cancel", class:"bg-gray-200 text-gray-800", action: closeModal},
-                {text:"Delete", class:"bg-red-600 text-white", action: () => executeDelete(id)}
-            ]);
-        };
-
-        function executeDelete(id) {
-            closeModal();
-            let found = false;
-            drawnItems.eachLayer(layer => {
-                if (layer.feature.properties.id === id) {
-                    drawnItems.removeLayer(layer);
-                    found = true;
-                }
-            });
-            if(found) { 
-                updateUI(); 
-                saveToLocal(); 
-                showToast("Row Deleted", "error"); 
-                markUnsaved(); // Delete counts as a change
-            }
-        }
+        window.confirmDelete = function(id) { showModal("Delete Row?", "Cannot be undone.", [{text:"Cancel", class:"bg-gray-200 text-gray-800", action: closeModal}, {text:"Delete", class:"bg-red-600 text-white", action: () => executeDelete(id)}]); };
+        function executeDelete(id) { closeModal(); let found = false; drawnItems.eachLayer(layer => { if (layer.feature.properties.id === id) { drawnItems.removeLayer(layer); found = true; } }); if(found) { updateUI(); saveToLocal(); showToast("Row Deleted", "error"); markUnsaved(); } }
 
         async function syncToGoogle() {
             saveToLocal();
             if (rowsData.length === 0) { showToast("Draw some rows first!", "error"); return; }
-            
-            const btn = document.getElementById('syncBtn');
-            const originalContent = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
-            btn.disabled = true;
-            showToast("Syncing to Google Sheet...", "info");
-
-            try {
-                await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(rowsData)
-                });
-                
-                showToast("Sync Complete!", "success");
-                markSaved(); // Mark as clean on success
-            } catch (error) {
-                console.error(error);
-                showToast("Sync Failed. Check Internet.", "error");
-            } finally {
-                btn.innerHTML = originalContent;
-                btn.disabled = false;
-            }
+            const btn = document.getElementById('syncBtn'), oldHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...'; btn.disabled = true; showToast("Syncing...", "info");
+            try { await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rowsData) }); showToast("Sync Complete!", "success"); markSaved(); }
+            catch (error) { console.error(error); showToast("Sync Failed.", "error"); }
+            finally { btn.innerHTML = oldHTML; btn.disabled = false; }
         }
 
         function saveToLocal(notify=false, skipHistory=false) {
@@ -765,85 +561,34 @@
             drawnItems.eachLayer(layer => {
                 const props = layer.feature.properties;
                 const latlngs = layer.getLatLngs();
-                const coordsArray = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
-                props.coords = coordsArray.map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
-                data.push(props);
+                const coords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs).map(pt => [parseFloat(pt.lat.toFixed(6)), parseFloat(pt.lng.toFixed(6))]);
+                data.push({ ...props, coords }); // Clone props
             });
-            
-            if (!skipHistory) {
-                recordHistory(data);
-            }
-
+            if (!skipHistory) recordHistory(data);
             localStorage.setItem('gardenMapData', JSON.stringify(data));
             rowsData = data;
-            
-            if(notify) {
-                showToast("Saved to browser!", "success");
-            }
+            if(notify) showToast("Saved to browser!", "success");
         }
 
         function showToast(msg, type="info") {
-            const t = document.getElementById('toast');
-            const icon = document.getElementById('toastIcon');
-            const text = document.getElementById('toastMessage');
-            
-            text.innerText = msg;
-            t.className = ""; 
-            t.classList.add(type);
-            
-            if(type === 'success') icon.className = "fa-solid fa-check-circle";
-            else if(type === 'error') icon.className = "fa-solid fa-triangle-exclamation";
-            else if(type === 'warning') icon.className = "fa-solid fa-triangle-exclamation";
-            else icon.className = "fa-solid fa-info-circle";
-            
-            t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 3000);
+            const t = document.getElementById('toast'), i = document.getElementById('toastIcon'), txt = document.getElementById('toastMessage');
+            txt.innerText = msg; t.className = ""; t.classList.add(type);
+            if(type === 'success') i.className = "fa-solid fa-check-circle"; else if(type === 'error' || type === 'warning') i.className = "fa-solid fa-triangle-exclamation"; else i.className = "fa-solid fa-info-circle";
+            t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000);
         }
-
         function showModal(title, msg, actions) {
-            document.getElementById('modalTitle').innerText = title;
-            document.getElementById('modalMessage').innerText = msg;
-            const actionContainer = document.getElementById('modalActions');
-            actionContainer.innerHTML = '';
-            
-            actions.forEach(action => {
-                const btn = document.createElement('button');
-                btn.innerText = action.text;
-                btn.className = `px-4 py-2 rounded text-sm font-bold ${action.class}`;
-                btn.onclick = action.action;
-                actionContainer.appendChild(btn);
-            });
-            
-            const overlay = document.getElementById('modalOverlay');
-            overlay.style.display = 'flex';
+            document.getElementById('modalTitle').innerText = title; document.getElementById('modalMessage').innerText = msg;
+            const ac = document.getElementById('modalActions'); ac.innerHTML = '';
+            actions.forEach(a => { const b = document.createElement('button'); b.innerText = a.text; b.className = `px-4 py-2 rounded text-sm font-bold ${a.class}`; b.onclick = a.action; ac.appendChild(b); });
+            document.getElementById('modalOverlay').style.display = 'flex';
         }
-
-        function closeModal() {
-            document.getElementById('modalOverlay').style.display = 'none';
-        }
-
+        function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+        
         function downloadCSV() {
-            saveToLocal();
-            if (rowsData.length === 0) return;
+            saveToLocal(); if (rowsData.length === 0) return;
             let csv = "data:text/csv;charset=utf-8,Row ID,Row Name,Type,Products,Coords\n";
-            rowsData.forEach(r => {
-                const safeProducts = (r.products || "").replace(/"/g, '""');
-                csv += `${r.id},${r.name},${r.type},"${safeProducts}","${JSON.stringify(r.coords).replace(/"/g, '""')}"\n`;
-            });
-            const link = document.createElement("a");
-            link.href = encodeURI(csv);
-            link.download = "gertens-map-locations.csv";
-            link.click();
-        }
-
-        function copyJSON() {
-            saveToLocal();
-            const json = JSON.stringify(rowsData, null, 4);
-            const box = document.getElementById("hiddenCopy");
-            box.value = json;
-            box.select();
-            document.execCommand("copy");
-            showToast("JSON Copied", "success");
+            rowsData.forEach(r => { const sp = (r.products || "").replace(/"/g, '""'); csv += `${r.id},${r.name},${r.type},"${sp}","${JSON.stringify(r.coords).replace(/"/g, '""')}"\n`; });
+            const link = document.createElement("a"); link.href = encodeURI(csv); link.download = "gertens-map-locations.csv"; link.click();
         }
     </script>
 </body>
