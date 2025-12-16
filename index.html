@@ -43,6 +43,18 @@
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .snap-active { background-color: rgba(34, 197, 94, 0.2) !important; border-color: rgba(34, 197, 94, 0.5) !important; color: #86efac !important; }
 
+        /* Coordinate Inspector Style */
+        .coord-inspector {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #333;
+            border: 1px solid #ccc;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
         /* AUTOCOMPLETE STYLES */
         .autocomplete-list {
             position: absolute;
@@ -69,6 +81,10 @@
         }
         .autocomplete-item:hover {
             background-color: #e9e9e9; 
+        }
+        .autocomplete-active {
+            background-color: #3b82f6 !important; 
+            color: #ffffff; 
         }
         
         /* TAG INPUT STYLES */
@@ -129,6 +145,22 @@
         .tag-input::placeholder {
             color: #9ca3af;
         }
+
+        /* IMAGE EDIT CONTROLS */
+        #imageEditControls {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            gap: 15px;
+        }
     </style>
 </head>
 <body>
@@ -158,10 +190,30 @@
                             <div class="text-xs text-gray-500 mt-0.5 leading-snug">Warning: Replaces edits with cloud data.</div>
                         </div>
                     </button>
+                    <!-- NEW OPTION: Update Background Image -->
+                    <button onclick="startImageUpdate(); toggleAdvancedMenu()" class="w-full text-left px-4 py-3 hover:bg-gray-100 border-b border-gray-100 flex items-start gap-3 transition">
+                        <div class="bg-purple-100 p-2 rounded text-purple-600 mt-1"><i class="fa-solid fa-image"></i></div>
+                        <div>
+                            <div class="font-bold text-sm text-gray-800">Update Background Image</div>
+                            <div class="text-xs text-gray-500 mt-0.5 leading-snug">Overlay a custom map or drone photo.</div>
+                        </div>
+                    </button>
                 </div>
             </div>
              <button onclick="downloadCSV()" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1 rounded text-sm transition font-semibold flex items-center gap-2" title="Download Backup CSV"><i class="fa-solid fa-file-csv"></i> CSV</button>
         </div>
+    </div>
+
+    <!-- Image Edit Controls (Hidden by default) -->
+    <div id="imageEditControls">
+        <div class="text-sm font-bold text-gray-700">Adjusting Image...</div>
+        <div class="text-xs text-gray-500">Drag center to move. Drag corners to resize.</div>
+        <button onclick="lockImage()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold shadow">
+            <i class="fa-solid fa-lock mr-1"></i> LOCK IMAGE
+        </button>
+        <button onclick="cancelImageUpdate()" class="text-gray-500 hover:text-red-500 text-sm font-bold px-2">
+            Cancel
+        </button>
     </div>
 
     <div id="container">
@@ -189,6 +241,19 @@
             </div>
         </div>
         <div id="map"></div>
+        
+        <!-- Generic Input Modal -->
+        <div id="inputModalOverlay" class="hidden fixed inset-0 bg-black/50 z-[10000] flex justify-center items-center">
+            <div class="bg-white p-6 rounded-lg shadow-xl w-96">
+                <h3 id="inputModalTitle" class="font-bold text-lg mb-2">Enter Value</h3>
+                <input type="text" id="inputModalField" class="w-full border p-2 rounded mb-4" placeholder="...">
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeInputModal()" class="px-4 py-2 bg-gray-200 rounded text-sm font-bold">Cancel</button>
+                    <button id="inputModalConfirm" class="px-4 py-2 bg-blue-600 text-white rounded text-sm font-bold">OK</button>
+                </div>
+            </div>
+        </div>
+
         <div id="modalOverlay" class="flex items-center justify-center"><div id="modalContent"><h3 id="modalTitle" class="font-bold text-lg mb-2">Title</h3><p id="modalMessage" class="text-gray-600 text-sm mb-4">Message</p><div id="modalActions" class="flex justify-end gap-2"></div></div></div>
         <div id="toast"><i id="toastIcon" class="fa-solid fa-info-circle"></i><span id="toastMessage">Notification</span></div>
     </div>
@@ -198,14 +263,14 @@
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- Add Leaflet.DistortableImage for drag/resize logic (simulated with standard ImageOverlay for stability in this context) -->
+    <!-- Note: For simplicity and stability without extra plugins, we will use a draggable rectangle to define bounds -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
         // --- CONFIGURATION ---
         const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?gid=0&single=true&output=csv"; 
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-wLQcYoDPacJeLHBmkexXQX8hQFzgNwTRKBP_SgW0cb7hncZW2LlfcHjR3-wLzvAbQQ/exec";
-        
-        // --- MASTER LIST ---
         const MASTER_LIST_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?gid=1166776934&single=true&output=csv"; 
 
         const DEFAULT_PLANTS = [
@@ -216,8 +281,18 @@
             "Fern", "Fuchsia", "Forsythia"
         ];
 
+        // --- CUSTOM IMAGE STATE ---
+        // This object holds the live configuration
+        let activeCustomImage = {
+            url: "", 
+            bounds: [[44.8710, -93.0530], [44.8735, -93.0500]], // Default bounds
+            opacity: 0.8
+        };
+        
+        let tempImageLayer = null;     // The visual image
+        let tempControlBox = null;     // The draggable box to set bounds
+
         const GRID_STEP = 0.00001;
-        const CUSTOM_IMAGE = { url: "", bounds: [[44.8735, -93.0530], [44.8710, -93.0500]], opacity: 1.0 };
         const ROW_TYPES = {
             "Annuals": "#8B0000", "Color Block": "#FF00FF", "Evergreens": "#006400", "Hardscapes": "#FFD700",
             "Mulch and Soils": "#800000", "Patio Furniture": "#8B4513", "Perennials": "#800080", "Pottery": "#40E0D0",
@@ -235,7 +310,21 @@
             map = L.map('map', { maxZoom: 20, minZoom: 17 }).setView([44.872063, -93.051572], 19);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 20 }).addTo(map);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 }).addTo(map);
-            if (CUSTOM_IMAGE.url.length > 5) L.imageOverlay(CUSTOM_IMAGE.url, CUSTOM_IMAGE.bounds, { opacity: CUSTOM_IMAGE.opacity, zIndex: 2 }).addTo(map);
+            
+            // Initial Image Load (if saved in local storage or configured)
+            // For now, we rely on manual adding via menu
+            
+            // Coordinate Inspector
+            const coordControl = L.control({ position: 'bottomleft' });
+            coordControl.onAdd = function () {
+                const div = L.DomUtil.create('div', 'coord-inspector');
+                div.innerHTML = "Hover map for Lat/Lng";
+                map.on('mousemove', function (e) {
+                    div.innerHTML = `Lat: ${e.latlng.lat.toFixed(5)}<br>Lng: ${e.latlng.lng.toFixed(5)}`;
+                });
+                return div;
+            };
+            coordControl.addTo(map);
 
             drawnItems = new L.FeatureGroup();
             map.addLayer(drawnItems);
@@ -250,8 +339,26 @@
             if (saved) { try { const parsed = JSON.parse(saved); loadDataToMap(parsed); recordHistory(parsed); } catch(e) { console.error("Save load error", e); } }
             else { recordHistory([]); }
 
-            map.on(L.Draw.Event.CREATED, (e) => { handleCreate(e); markUnsaved(); });
-            map.on(L.Draw.Event.EDITED, (e) => { if(snapEnabled) e.layers.eachLayer(l => { if(l instanceof L.Rectangle) snapLayerToGrid(l); }); updateUI(); saveToLocal(); markUnsaved(); });
+            map.on(L.Draw.Event.CREATED, (e) => { 
+                // Don't add if it's the control box for image editing
+                if(tempControlBox && e.layer === tempControlBox) return;
+                handleCreate(e); markUnsaved(); 
+            });
+            map.on(L.Draw.Event.EDITED, (e) => { 
+                // Special handling for image control box
+                let isControlBox = false;
+                e.layers.eachLayer(l => {
+                    if(l === tempControlBox) {
+                        isControlBox = true;
+                        updateImagePosition(); // Sync image to box
+                    } else if(snapEnabled && l instanceof L.Rectangle) {
+                        snapLayerToGrid(l);
+                    }
+                });
+                if(!isControlBox) {
+                    updateUI(); saveToLocal(); markUnsaved(); 
+                }
+            });
             map.on('click', () => disableAllEdits());
             document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); } if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redo(); } });
 
@@ -261,38 +368,133 @@
             autoSaveInterval = setInterval(() => saveToLocal(false, true), 30000);
         });
 
+        // --- IMAGE OVERLAY LOGIC ---
+        function startImageUpdate() {
+            // 1. Ask for URL
+            const modal = document.getElementById('inputModalOverlay');
+            const field = document.getElementById('inputModalField');
+            const btn = document.getElementById('inputModalConfirm');
+            
+            document.getElementById('inputModalTitle').innerText = "Paste Image URL";
+            field.value = "";
+            field.placeholder = "https://example.com/map.jpg";
+            modal.classList.remove('hidden');
+            
+            btn.onclick = () => {
+                const url = field.value.trim();
+                if(url) {
+                    initImageEditor(url);
+                    closeInputModal();
+                }
+            };
+        }
+
+        function closeInputModal() {
+            document.getElementById('inputModalOverlay').classList.add('hidden');
+        }
+
+        function initImageEditor(url) {
+            // Remove existing temp layers if any
+            if(tempImageLayer) map.removeLayer(tempImageLayer);
+            if(tempControlBox) map.removeLayer(tempControlBox);
+
+            activeCustomImage.url = url;
+            
+            // Default bounds: Current map view center, slightly smaller
+            const center = map.getCenter();
+            const bounds = [
+                [center.lat - 0.0005, center.lng - 0.0008],
+                [center.lat + 0.0005, center.lng + 0.0008]
+            ];
+
+            // 1. Create Transparent Image Layer
+            tempImageLayer = L.imageOverlay(url, bounds, { opacity: 0.25 }).addTo(map);
+
+            // 2. Create Editable Rectangle (The "Handle")
+            // We use the Draw plugin's rectangle logic but manually
+            tempControlBox = L.rectangle(bounds, { color: "#3b82f6", weight: 1, fill: false, dashArray: "5, 5" }).addTo(map);
+            
+            // Enable editing on this box immediately
+            tempControlBox.editing.enable();
+            
+            // Sync logic: When box moves, image moves
+            tempControlBox.on('edit', updateImagePosition);
+            tempControlBox.on('drag', updateImagePosition); // If using a plugin that emits drag
+
+            // Show Controls
+            document.getElementById('imageEditControls').style.display = 'flex';
+            showToast("Drag the blue box to position image.", "info");
+        }
+
+        function updateImagePosition() {
+            if(tempControlBox && tempImageLayer) {
+                tempImageLayer.setBounds(tempControlBox.getBounds());
+            }
+        }
+
+        function lockImage() {
+            if(tempControlBox && tempImageLayer) {
+                // 1. Get final bounds
+                const b = tempControlBox.getBounds();
+                const bounds = [
+                    [b.getSouthWest().lat, b.getSouthWest().lng],
+                    [b.getNorthEast().lat, b.getNorthEast().lng]
+                ];
+
+                // 2. Update Image to 100% opacity (or preferred)
+                tempImageLayer.setOpacity(activeCustomImage.opacity);
+                
+                // 3. Remove control box
+                tempControlBox.editing.disable();
+                map.removeLayer(tempControlBox);
+                tempControlBox = null;
+
+                // 4. Hide Controls
+                document.getElementById('imageEditControls').style.display = 'none';
+
+                // 5. Output for Developer (You)
+                const codeString = `const CUSTOM_IMAGE = {\n    url: "${activeCustomImage.url}",\n    bounds: [\n        [${bounds[0][0].toFixed(6)}, ${bounds[0][1].toFixed(6)}],\n        [${bounds[1][0].toFixed(6)}, ${bounds[1][1].toFixed(6)}]\n    ],\n    opacity: 0.8\n};`;
+                
+                // Copy to clipboard or show modal
+                showModal("Image Locked!", "Copy this code block into the HTML source to save permanently:", [
+                    { text: "Close", class: "bg-blue-600 text-white", action: closeModal }
+                ]);
+                // Inject code into message area for easy copying
+                setTimeout(() => {
+                    document.getElementById('modalMessage').innerHTML = `<textarea class="w-full h-32 text-xs font-mono border p-2 bg-gray-50">${codeString}</textarea>`;
+                }, 100);
+            }
+        }
+
+        function cancelImageUpdate() {
+            if(tempImageLayer) map.removeLayer(tempImageLayer);
+            if(tempControlBox) map.removeLayer(tempControlBox);
+            document.getElementById('imageEditControls').style.display = 'none';
+            tempImageLayer = null;
+            tempControlBox = null;
+        }
+
         // --- TAG SYSTEM HELPERS ---
         function renderTags(container, tags, id) {
-            // Clear current tags except the input at the end
             const input = container.querySelector('.tag-input');
-            container.innerHTML = ''; // wipe
-            
+            container.innerHTML = ''; 
             tags.forEach((tag, index) => {
                 const tagEl = document.createElement('div');
                 tagEl.className = 'tag';
-                tagEl.innerHTML = `
-                    <span>${tag}</span>
-                    <span class="tag-close" onclick="removeTag('${id}', ${index}, event)">&times;</span>
-                `;
+                tagEl.innerHTML = `<span>${tag}</span><span class="tag-close" onclick="removeTag('${id}', ${index}, event)">&times;</span>`;
                 container.appendChild(tagEl);
             });
-            container.appendChild(input); // Add input back
+            container.appendChild(input);
         }
 
         window.removeTag = function(id, index, e) {
-            e.stopPropagation(); // prevent triggering row selection
-            // Find the layer
+            e.stopPropagation(); 
             drawnItems.eachLayer(layer => {
                 if (layer.feature.properties.id === id) {
                     let currentProducts = layer.feature.properties.products || "";
                     let tags = currentProducts.split(',').map(s => s.trim()).filter(s => s.length > 0);
-                    
-                    tags.splice(index, 1); // remove
-                    
-                    const newString = tags.join(', ');
-                    layer.feature.properties.products = newString;
-                    
-                    // Re-render
+                    tags.splice(index, 1); 
+                    layer.feature.properties.products = tags.join(', ');
                     const container = document.getElementById(`tags-${id}`);
                     if(container) renderTags(container, tags, id);
                 }
@@ -301,24 +503,17 @@
         };
 
         window.addTag = function(id, value) {
-            const cleanVal = value.trim().replace(/,$/, ''); // remove trailing comma
+            const cleanVal = value.trim().replace(/,$/, ''); 
             if (!cleanVal) return;
-
             drawnItems.eachLayer(layer => {
                 if (layer.feature.properties.id === id) {
                     let currentProducts = layer.feature.properties.products || "";
                     let tags = currentProducts.split(',').map(s => s.trim()).filter(s => s.length > 0);
-                    
                     tags.push(cleanVal);
-                    
-                    const newString = tags.join(', ');
-                    layer.feature.properties.products = newString;
-                    
-                    // Re-render
+                    layer.feature.properties.products = tags.join(', ');
                     const container = document.getElementById(`tags-${id}`);
                     if(container) {
                         renderTags(container, tags, id);
-                        // Reset input
                         const input = container.querySelector('.tag-input');
                         input.value = '';
                         input.focus();
@@ -329,25 +524,17 @@
         };
 
         function setupTagInput(inputElement, rowId) {
-            // Autocomplete Setup
             let currentFocus = -1;
-            
             inputElement.addEventListener("input", function(e) {
                 const val = this.value;
                 closeAllLists();
                 if (!val) return false;
-
-                // Smart Check: Did they just type a comma?
-                if (val.includes(',')) {
-                    addTag(rowId, val.replace(',', ''));
-                    return;
-                }
+                if (val.includes(',')) { addTag(rowId, val.replace(',', '')); return; }
 
                 currentFocus = -1;
                 const listDiv = document.createElement("DIV");
                 listDiv.setAttribute("id", this.id + "autocomplete-list");
                 listDiv.setAttribute("class", "autocomplete-list");
-                // Position relative to the whole container to avoid overflow issues
                 this.parentNode.appendChild(listDiv); 
                 this.parentNode.style.position = 'relative';
 
@@ -361,46 +548,27 @@
                         itemDiv.innerHTML = "<strong>" + masterPlantList[i].substr(0, val.length) + "</strong>";
                         itemDiv.innerHTML += masterPlantList[i].substr(val.length);
                         itemDiv.innerHTML += "<input type='hidden' value='" + masterPlantList[i] + "'>";
-                        
-                        itemDiv.addEventListener("click", function(e) {
-                            addTag(rowId, this.getElementsByTagName("input")[0].value);
-                            closeAllLists();
-                        });
+                        itemDiv.addEventListener("click", function(e) { addTag(rowId, this.getElementsByTagName("input")[0].value); closeAllLists(); });
                         listDiv.appendChild(itemDiv);
                     }
                 }
             });
-
             inputElement.addEventListener("keydown", function(e) {
-                if (e.key === "Tab" || e.key === "Enter") {
-                    e.preventDefault();
-                    if(this.value.trim() !== "") {
-                        addTag(rowId, this.value);
-                        closeAllLists();
-                    }
-                }
+                if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); if(this.value.trim() !== "") { addTag(rowId, this.value); closeAllLists(); } }
                 if (e.key === "Backspace" && this.value === "") {
-                    // Try to remove the last tag
                     drawnItems.eachLayer(layer => {
                         if (layer.feature.properties.id === rowId) {
                             let currentProducts = layer.feature.properties.products || "";
                             let tags = currentProducts.split(',').map(s => s.trim()).filter(s => s.length > 0);
-                            if(tags.length > 0) {
-                                removeTag(rowId, tags.length - 1, e);
-                            }
+                            if(tags.length > 0) removeTag(rowId, tags.length - 1, e);
                         }
                     });
                 }
             });
-
             document.addEventListener("click", function (e) { closeAllLists(e.target); });
             function closeAllLists(elmnt) {
                 var x = document.getElementsByClassName("autocomplete-list");
-                for (var i = 0; i < x.length; i++) {
-                    if (elmnt != x[i] && elmnt != inputElement) {
-                        x[i].parentNode.removeChild(x[i]);
-                    }
-                }
+                for (var i = 0; i < x.length; i++) { if (elmnt != x[i] && elmnt != inputElement) x[i].parentNode.removeChild(x[i]); }
             }
         }
 
@@ -559,18 +727,16 @@
             updateUI();
         }
 
-        // --- UPDATED UI LOGIC WITH SORTING ---
         function updateUI() {
             if (!drawnItems) return;
             const list = document.getElementById('rowsList');
             const layers = drawnItems.getLayers();
             document.getElementById('rowCount').innerText = layers.length;
             list.innerHTML = '';
-            rowsData = []; // Clear and rebuild in sorted order
+            rowsData = []; 
 
             if (layers.length === 0) { list.innerHTML = `<div class="text-gray-400 text-sm italic text-center mt-10">Map is empty.<br>Draw a row to start.</div>`; return; }
 
-            // 1. Collect everything
             let items = [];
             layers.forEach(layer => {
                 const props = layer.feature.properties;
@@ -579,14 +745,12 @@
                 items.push({ layer, props });
             });
 
-            // 2. Sort by Name
             items.sort((a, b) => (a.props.name || "").localeCompare(b.props.name || ""));
 
-            // 3. Render
             items.forEach(item => {
                 const layer = item.layer;
                 const props = item.props;
-                rowsData.push(props); // Add to data in sort order
+                rowsData.push(props); 
 
                 let optionsHtml = '';
                 for (const [typeName] of Object.entries(ROW_TYPES)) {
@@ -704,6 +868,15 @@
             let csv = "data:text/csv;charset=utf-8,Row ID,Row Name,Type,Products,Coords\n";
             rowsData.forEach(r => { const sp = (r.products || "").replace(/"/g, '""'); csv += `${r.id},${r.name},${r.type},"${sp}","${JSON.stringify(r.coords).replace(/"/g, '""')}"\n`; });
             const link = document.createElement("a"); link.href = encodeURI(csv); link.download = "gertens-map-locations.csv"; link.click();
+        }
+        function copyJSON() {
+            saveToLocal();
+            const json = JSON.stringify(rowsData, null, 4);
+            const box = document.getElementById("hiddenCopy");
+            box.value = json;
+            box.select();
+            document.execCommand("copy");
+            showToast("JSON Copied", "success");
         }
     </script>
 </body>
