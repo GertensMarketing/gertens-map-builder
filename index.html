@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Gertens Map Editor</title>
     
-    <!-- FAVICON ADDED HERE -->
+    <!-- FAVICON -->
     <link rel="icon" type="image/png" href="gertens-blueprint-favicon.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -153,13 +153,17 @@
             left: 50%;
             transform: translateX(-50%);
             background: white;
-            padding: 10px 20px;
+            padding: 15px;
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             z-index: 1000;
-            display: none;
-            align-items: center;
-            gap: 15px;
+            display: none; /* Flex when active */
+            flex-direction: column;
+            gap: 10px;
+            min-width: 250px;
+        }
+        input[type=range] {
+            accent-color: #3b82f6;
         }
     </style>
 </head>
@@ -190,12 +194,20 @@
                             <div class="text-xs text-gray-500 mt-0.5 leading-snug">Warning: Replaces edits with cloud data.</div>
                         </div>
                     </button>
-                    <!-- NEW OPTION: Update Background Image -->
+                    <!-- Update Background Image -->
                     <button onclick="startImageUpdate(); toggleAdvancedMenu()" class="w-full text-left px-4 py-3 hover:bg-gray-100 border-b border-gray-100 flex items-start gap-3 transition">
                         <div class="bg-purple-100 p-2 rounded text-purple-600 mt-1"><i class="fa-solid fa-image"></i></div>
                         <div>
                             <div class="font-bold text-sm text-gray-800">Update Background Image</div>
                             <div class="text-xs text-gray-500 mt-0.5 leading-snug">Overlay a custom map or drone photo.</div>
+                        </div>
+                    </button>
+                    <!-- View Code -->
+                    <button onclick="viewLockedImageCode(); toggleAdvancedMenu()" class="w-full text-left px-4 py-3 hover:bg-gray-100 border-b border-gray-100 flex items-start gap-3 transition">
+                        <div class="bg-gray-100 p-2 rounded text-gray-600 mt-1"><i class="fa-solid fa-code"></i></div>
+                        <div>
+                            <div class="font-bold text-sm text-gray-800">View Locked Image Code</div>
+                            <div class="text-xs text-gray-500 mt-0.5 leading-snug">Get code to paste into Google Sheet.</div>
                         </div>
                     </button>
                 </div>
@@ -204,16 +216,33 @@
         </div>
     </div>
 
-    <!-- Image Edit Controls (Hidden by default) -->
+    <!-- Image Edit Controls -->
     <div id="imageEditControls">
-        <div class="text-sm font-bold text-gray-700">Adjusting Image...</div>
-        <div class="text-xs text-gray-500">Drag center to move. Drag corners to resize.</div>
-        <button onclick="lockImage()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold shadow">
-            <i class="fa-solid fa-lock mr-1"></i> LOCK IMAGE
-        </button>
-        <button onclick="cancelImageUpdate()" class="text-gray-500 hover:text-red-500 text-sm font-bold px-2">
-            Cancel
-        </button>
+        <div class="flex flex-col gap-1">
+            <div class="text-sm font-bold text-gray-800">Adjust Image Overlay</div>
+            <div class="text-xs text-gray-500">Drag center to move. Use slider to resize.</div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <label class="text-xs font-bold text-gray-600 w-12">Opacity:</label>
+            <input type="range" id="imgOpacitySlider" min="0.1" max="1.0" step="0.1" value="0.5" 
+                   oninput="updateTempOpacity(this.value)" class="flex-1 cursor-pointer">
+        </div>
+
+        <div class="flex items-center gap-3">
+            <label class="text-xs font-bold text-gray-600 w-12">Size:</label>
+            <input type="range" id="imgSizeSlider" min="0.1" max="20.0" step="0.1" value="1.0" 
+                   oninput="updateTempSize(this.value)" class="flex-1 cursor-pointer">
+        </div>
+
+        <div class="flex gap-2 pt-2 border-t border-gray-100">
+            <button onclick="lockImage()" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-sm font-bold shadow transition">
+                <i class="fa-solid fa-lock mr-1"></i> LOCK IMAGE
+            </button>
+            <button onclick="cancelImageUpdate()" class="px-3 py-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded text-sm font-bold transition">
+                Cancel
+            </button>
+        </div>
     </div>
 
     <div id="container">
@@ -242,7 +271,7 @@
         </div>
         <div id="map"></div>
         
-        <!-- Generic Input Modal -->
+        <!-- Input Modal -->
         <div id="inputModalOverlay" class="hidden fixed inset-0 bg-black/50 z-[10000] flex justify-center items-center">
             <div class="bg-white p-6 rounded-lg shadow-xl w-96">
                 <h3 id="inputModalTitle" class="font-bold text-lg mb-2">Enter Value</h3>
@@ -263,8 +292,6 @@
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-    <!-- Add Leaflet.DistortableImage for drag/resize logic (simulated with standard ImageOverlay for stability in this context) -->
-    <!-- Note: For simplicity and stability without extra plugins, we will use a draggable rectangle to define bounds -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
@@ -272,6 +299,7 @@
         const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?gid=0&single=true&output=csv"; 
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-wLQcYoDPacJeLHBmkexXQX8hQFzgNwTRKBP_SgW0cb7hncZW2LlfcHjR3-wLzvAbQQ/exec";
         const MASTER_LIST_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?gid=1166776934&single=true&output=csv"; 
+        const MAP_IMAGE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo6MENz0SiOu7rr77XEqxcEbmYxvYCLSbBwPOBQoCe9bfW8PQIlMwVMGePG5zgnqC7LXNF3x6MrT6L/pub?gid=2021843794&single=true&output=csv";
 
         const DEFAULT_PLANTS = [
             "Hydrangea", "Hydrangea Paniculata", "Hydrangea Arborescens", "Hydrangea Macrophylla", "Hosta", "Hibiscus", "Helleborus",
@@ -282,15 +310,17 @@
         ];
 
         // --- CUSTOM IMAGE STATE ---
-        // This object holds the live configuration
         let activeCustomImage = {
             url: "", 
-            bounds: [[44.8710, -93.0530], [44.8735, -93.0500]], // Default bounds
-            opacity: 0.8
+            bounds: [[44.8710, -93.0530], [44.8735, -93.0500]], 
+            opacity: 0.8,
+            ratio: 1.0, 
+            baseHeight: 0.001 
         };
         
-        let tempImageLayer = null;     // The visual image
-        let tempControlBox = null;     // The draggable box to set bounds
+        let tempImageLayer = null;     
+        let tempControlBox = null;     
+        let savedImageLayer = null;    
 
         const GRID_STEP = 0.00001;
         const ROW_TYPES = {
@@ -311,8 +341,8 @@
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 20 }).addTo(map);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 }).addTo(map);
             
-            // Initial Image Load (if saved in local storage or configured)
-            // For now, we rely on manual adding via menu
+            // Initial Image Load (Fetch from Cloud)
+            fetchMapImageConfig();
             
             // Coordinate Inspector
             const coordControl = L.control({ position: 'bottomleft' });
@@ -340,17 +370,15 @@
             else { recordHistory([]); }
 
             map.on(L.Draw.Event.CREATED, (e) => { 
-                // Don't add if it's the control box for image editing
                 if(tempControlBox && e.layer === tempControlBox) return;
                 handleCreate(e); markUnsaved(); 
             });
             map.on(L.Draw.Event.EDITED, (e) => { 
-                // Special handling for image control box
                 let isControlBox = false;
                 e.layers.eachLayer(l => {
                     if(l === tempControlBox) {
                         isControlBox = true;
-                        updateImagePosition(); // Sync image to box
+                        updateImagePosition(); 
                     } else if(snapEnabled && l instanceof L.Rectangle) {
                         snapLayerToGrid(l);
                     }
@@ -369,8 +397,48 @@
         });
 
         // --- IMAGE OVERLAY LOGIC ---
+        function fetchMapImageConfig() {
+            if(!MAP_IMAGE_CSV_URL) return;
+            Papa.parse(MAP_IMAGE_CSV_URL, {
+                download: true, header: false,
+                complete: function(results) {
+                    let configStr = "";
+                    for(let i=0; i<results.data.length; i++) {
+                        for(let j=0; j<results.data[i].length; j++) {
+                            const cell = results.data[i][j] || "";
+                            if(cell.trim().startsWith("const CUSTOM_IMAGE")) {
+                                const start = cell.indexOf('{');
+                                const end = cell.lastIndexOf('}');
+                                if(start > -1 && end > -1) {
+                                    configStr = cell.substring(start, end+1);
+                                    break;
+                                }
+                            } else if (cell.trim().startsWith("{") && cell.trim().includes("url")) {
+                                configStr = cell.trim();
+                                break;
+                            }
+                        }
+                        if(configStr) break;
+                    }
+
+                    if(configStr) {
+                        try {
+                            const config = (new Function("return " + configStr))();
+                            if(config.url && config.bounds) {
+                                activeCustomImage = config;
+                                if(savedImageLayer) map.removeLayer(savedImageLayer);
+                                savedImageLayer = L.imageOverlay(config.url, config.bounds, { opacity: config.opacity || 0.8, zIndex: 2 }).addTo(map);
+                                console.log("Loaded remote map image configuration.");
+                            }
+                        } catch(e) {
+                            console.error("Failed to parse map image config from sheet", e);
+                        }
+                    }
+                }
+            });
+        }
+
         function startImageUpdate() {
-            // 1. Ask for URL
             const modal = document.getElementById('inputModalOverlay');
             const field = document.getElementById('inputModalField');
             const btn = document.getElementById('inputModalConfirm');
@@ -394,36 +462,58 @@
         }
 
         function initImageEditor(url) {
-            // Remove existing temp layers if any
             if(tempImageLayer) map.removeLayer(tempImageLayer);
             if(tempControlBox) map.removeLayer(tempControlBox);
+            if(savedImageLayer) map.removeLayer(savedImageLayer);
 
             activeCustomImage.url = url;
             
-            // Default bounds: Current map view center, slightly smaller
-            const center = map.getCenter();
-            const bounds = [
-                [center.lat - 0.0005, center.lng - 0.0008],
-                [center.lat + 0.0005, center.lng + 0.0008]
+            showToast("Loading image dimensions...", "info");
+
+            const img = new Image();
+            img.onload = function() {
+                const aspectRatio = this.width / this.height;
+                activeCustomImage.ratio = aspectRatio;
+                
+                const center = map.getCenter();
+                activeCustomImage.baseHeight = 0.001; 
+                
+                const bounds = calculateBounds(center, 1.0); 
+
+                const initialOpacity = 0.5;
+                activeCustomImage.opacity = initialOpacity;
+
+                tempImageLayer = L.imageOverlay(url, bounds, { opacity: initialOpacity }).addTo(map);
+                tempControlBox = L.rectangle(bounds, { color: "#3b82f6", weight: 2, fill: false, dashArray: "5, 5" }).addTo(map);
+                
+                tempControlBox.editing.enable();
+                
+                tempControlBox.on('edit', updateImagePosition);
+                tempControlBox.on('drag', updateImagePosition); 
+
+                document.getElementById('imageEditControls').style.display = 'flex';
+                document.getElementById('imgOpacitySlider').value = initialOpacity;
+                document.getElementById('imgSizeSlider').value = 1.0;
+                showToast("Image placed! Drag center to move, slider to resize.", "success");
+            };
+            
+            img.onerror = function() {
+                showToast("Error: Could not load image from URL.", "error");
+            };
+            
+            img.src = url; 
+        }
+
+        function calculateBounds(centerLatLng, scale) {
+            const h = activeCustomImage.baseHeight * scale;
+            const centerLatRad = centerLatLng.lat * (Math.PI / 180);
+            const w = h * activeCustomImage.ratio / Math.cos(centerLatRad);
+            const halfH = h / 2;
+            const halfW = w / 2;
+            return [
+                [centerLatLng.lat - halfH, centerLatLng.lng - halfW], 
+                [centerLatLng.lat + halfH, centerLatLng.lng + halfW] 
             ];
-
-            // 1. Create Transparent Image Layer
-            tempImageLayer = L.imageOverlay(url, bounds, { opacity: 0.25 }).addTo(map);
-
-            // 2. Create Editable Rectangle (The "Handle")
-            // We use the Draw plugin's rectangle logic but manually
-            tempControlBox = L.rectangle(bounds, { color: "#3b82f6", weight: 1, fill: false, dashArray: "5, 5" }).addTo(map);
-            
-            // Enable editing on this box immediately
-            tempControlBox.editing.enable();
-            
-            // Sync logic: When box moves, image moves
-            tempControlBox.on('edit', updateImagePosition);
-            tempControlBox.on('drag', updateImagePosition); // If using a plugin that emits drag
-
-            // Show Controls
-            document.getElementById('imageEditControls').style.display = 'flex';
-            showToast("Drag the blue box to position image.", "info");
         }
 
         function updateImagePosition() {
@@ -432,49 +522,73 @@
             }
         }
 
+        function updateTempOpacity(val) {
+            if(tempImageLayer) {
+                tempImageLayer.setOpacity(val);
+                activeCustomImage.opacity = val;
+            }
+        }
+
+        function updateTempSize(scale) {
+            if(tempControlBox && tempImageLayer) {
+                const currentBounds = tempControlBox.getBounds();
+                const center = currentBounds.getCenter();
+                const newBounds = calculateBounds(center, parseFloat(scale));
+                tempControlBox.setBounds(newBounds);
+                tempImageLayer.setBounds(newBounds);
+            }
+        }
+
         function lockImage() {
             if(tempControlBox && tempImageLayer) {
-                // 1. Get final bounds
                 const b = tempControlBox.getBounds();
                 const bounds = [
                     [b.getSouthWest().lat, b.getSouthWest().lng],
                     [b.getNorthEast().lat, b.getNorthEast().lng]
                 ];
 
-                // 2. Update Image to 100% opacity (or preferred)
+                activeCustomImage.bounds = bounds;
                 tempImageLayer.setOpacity(activeCustomImage.opacity);
                 
-                // 3. Remove control box
                 tempControlBox.editing.disable();
                 map.removeLayer(tempControlBox);
+                map.removeLayer(tempImageLayer);
                 tempControlBox = null;
+                tempImageLayer = null;
 
-                // 4. Hide Controls
+                savedImageLayer = L.imageOverlay(activeCustomImage.url, activeCustomImage.bounds, { opacity: activeCustomImage.opacity, zIndex: 2 }).addTo(map);
+
                 document.getElementById('imageEditControls').style.display = 'none';
-
-                // 5. Output for Developer (You)
-                const codeString = `const CUSTOM_IMAGE = {\n    url: "${activeCustomImage.url}",\n    bounds: [\n        [${bounds[0][0].toFixed(6)}, ${bounds[0][1].toFixed(6)}],\n        [${bounds[1][0].toFixed(6)}, ${bounds[1][1].toFixed(6)}]\n    ],\n    opacity: 0.8\n};`;
-                
-                // Copy to clipboard or show modal
-                showModal("Image Locked!", "Copy this code block into the HTML source to save permanently:", [
-                    { text: "Close", class: "bg-blue-600 text-white", action: closeModal }
-                ]);
-                // Inject code into message area for easy copying
-                setTimeout(() => {
-                    document.getElementById('modalMessage').innerHTML = `<textarea class="w-full h-32 text-xs font-mono border p-2 bg-gray-50">${codeString}</textarea>`;
-                }, 100);
+                viewLockedImageCode();
             }
+        }
+
+        function viewLockedImageCode() {
+            if(!activeCustomImage.url) {
+                showToast("No active image found.", "error");
+                return;
+            }
+            const b = activeCustomImage.bounds;
+            const codeString = `const CUSTOM_IMAGE = {\n    url: "${activeCustomImage.url}",\n    bounds: [\n        [${b[0][0].toFixed(6)}, ${b[0][1].toFixed(6)}],\n        [${b[1][0].toFixed(6)}, ${b[1][1].toFixed(6)}]\n    ],\n    opacity: ${activeCustomImage.opacity}\n};`;
+            
+            showModal("Map Image Configuration", "Paste this EXACTLY into Cell A2 of your 'Map Image' sheet tab.", [
+                { text: "Close", class: "bg-blue-600 text-white", action: closeModal }
+            ]);
+            setTimeout(() => {
+                document.getElementById('modalMessage').innerHTML = `<p class="mb-2 text-xs text-gray-500">Updates will appear on reload.</p><textarea class="w-full h-32 text-xs font-mono border p-2 bg-gray-50 rounded">${codeString}</textarea>`;
+            }, 100);
         }
 
         function cancelImageUpdate() {
             if(tempImageLayer) map.removeLayer(tempImageLayer);
             if(tempControlBox) map.removeLayer(tempControlBox);
+            if(savedImageLayer) savedImageLayer.addTo(map);
             document.getElementById('imageEditControls').style.display = 'none';
             tempImageLayer = null;
             tempControlBox = null;
         }
 
-        // --- TAG SYSTEM HELPERS ---
+        // --- TAG SYSTEM & EDITING ---
         function renderTags(container, tags, id) {
             const input = container.querySelector('.tag-input');
             container.innerHTML = ''; 
@@ -824,14 +938,40 @@
         window.confirmDelete = function(id) { showModal("Delete Row?", "Cannot be undone.", [{text:"Cancel", class:"bg-gray-200 text-gray-800", action: closeModal}, {text:"Delete", class:"bg-red-600 text-white", action: () => executeDelete(id)}]); };
         function executeDelete(id) { closeModal(); let found = false; drawnItems.eachLayer(layer => { if (layer.feature.properties.id === id) { drawnItems.removeLayer(layer); found = true; } }); if(found) { updateUI(); saveToLocal(); showToast("Row Deleted", "error"); markUnsaved(); } }
 
+        // --- UPDATED SYNC LOGIC ---
         async function syncToGoogle() {
-            saveToLocal();
+            saveToLocal(); // Ensure data is fresh
             if (rowsData.length === 0) { showToast("Draw some rows first!", "error"); return; }
-            const btn = document.getElementById('syncBtn'), oldHTML = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...'; btn.disabled = true; showToast("Syncing...", "info");
-            try { await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rowsData) }); showToast("Sync Complete!", "success"); markSaved(); }
-            catch (error) { console.error(error); showToast("Sync Failed.", "error"); }
-            finally { btn.innerHTML = oldHTML; btn.disabled = false; }
+            
+            const btn = document.getElementById('syncBtn');
+            const oldHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+            btn.disabled = true;
+            showToast("Syncing to Google Sheet...", "info");
+
+            try {
+                // CHANGED: Use text/plain to avoid CORS Preflight failure issues with opaque requests
+                // Google Apps Script usually handles text payload fine if parsed manually on server or if it auto-detects JSON in body.
+                // NOTE: 'no-cors' mode is intentionally removed to see if actual errors can be caught, 
+                // OR kept if you want to allow opaque response.
+                // Standard approach for simple webhooks is usually NO-CORS + text/plain to allow "fire and forget".
+                
+                await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Keep no-cors for Google Apps Script Web App compatibility (opaque response)
+                    headers: { 'Content-Type': 'text/plain' }, // Switch to text/plain to avoid preflight
+                    body: JSON.stringify(rowsData)
+                });
+                
+                showToast("Sync Complete!", "success");
+                markSaved(); 
+            } catch (error) {
+                console.error("Sync Error:", error);
+                showToast("Sync Failed. Check Internet.", "error");
+            } finally {
+                btn.innerHTML = oldHTML;
+                btn.disabled = false;
+            }
         }
 
         function saveToLocal(notify=false, skipHistory=false) {
