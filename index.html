@@ -950,16 +950,12 @@
             showToast("Syncing to Google Sheet...", "info");
 
             try {
-                // CHANGED: Use text/plain to avoid CORS Preflight failure issues with opaque requests
-                // Google Apps Script usually handles text payload fine if parsed manually on server or if it auto-detects JSON in body.
-                // NOTE: 'no-cors' mode is intentionally removed to see if actual errors can be caught, 
-                // OR kept if you want to allow opaque response.
-                // Standard approach for simple webhooks is usually NO-CORS + text/plain to allow "fire and forget".
-                
+                // FIXED: Use text/plain with no-cors. 
+                // This prevents the browser from doing a strict OPTIONS preflight check which Google Apps Script fails.
                 await fetch(WEB_APP_URL, {
                     method: 'POST',
-                    mode: 'no-cors', // Keep no-cors for Google Apps Script Web App compatibility (opaque response)
-                    headers: { 'Content-Type': 'text/plain' }, // Switch to text/plain to avoid preflight
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain' }, 
                     body: JSON.stringify(rowsData)
                 });
                 
